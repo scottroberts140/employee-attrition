@@ -1,0 +1,36 @@
+# Data and models
+models/
+metrics/
+data/
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.onnx
+
+# Datasets
+*.csv
+*.parquet
+*.json.gz
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and outputs
+logs/
+outputs/
+*.log
+
+# MLflow local tracking
+mlruns/
