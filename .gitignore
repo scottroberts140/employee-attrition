@@ -1,7 +1,8 @@
 # Data and models
 models/
 metrics/
-data/
+data/*
+!data/**/*.dvc
 *.pkl
 *.joblib
 *.h5
