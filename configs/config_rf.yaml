@@ -8,5 +8,6 @@ _global_:
   min_f1: 0.30
 
 baseline:
-  description: "Random Forest Baseline"
+  title: "Random Forest Baseline"
+  description: "Baseline configuration for Random Forest models."
 
