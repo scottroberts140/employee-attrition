@@ -11,6 +11,7 @@ from preprocessing import (
     encode_binary_column,
     create_bins,
     remove_outliers,
+    has_outliers,
     validate_dataframe,
     clean_data,
     encode_categoricals,
@@ -63,6 +64,52 @@ def test_handle_missing_values_median_multiple_columns():
 
     assert result["age"].isna().sum() == 0
     assert result["income"].isna().sum() == 0
+
+
+def test_handle_missing_values_mean_replaces_nulls_with_mean():
+    """Mean fill should replace NaN values with the column mean."""
+    df = pd.DataFrame({"age": [20.0, 30.0, np.nan, 40.0]})
+
+    result = handle_missing_values(df, ["age"], strategy="mean")
+
+    assert result["age"].isna().sum() == 0
+    assert result["age"].iloc[2] == 30.0
+
+
+def test_handle_missing_values_mean_median_uses_median_when_outliers_exist():
+    """Mean-median strategy should prefer median for columns with outliers."""
+    df = pd.DataFrame({"age": [20.0, 21.0, 22.0, np.nan, 100.0]})
+
+    result = handle_missing_values(df, ["age"], strategy="mean_median")
+
+    assert result["age"].isna().sum() == 0
+    assert result["age"].iloc[3] == 21.5
+
+
+def test_handle_missing_values_mean_median_uses_mean_without_outliers():
+    """Mean-median strategy should use mean when the column has no outliers."""
+    df = pd.DataFrame({"age": [20.0, 30.0, np.nan, 40.0]})
+
+    result = handle_missing_values(df, ["age"], strategy="mean_median")
+
+    assert result["age"].isna().sum() == 0
+    assert result["age"].iloc[2] == 30.0
+
+
+def test_handle_missing_values_mean_median_uses_custom_outlier_settings():
+    """Mean-median strategy should pass custom outlier settings through to detection."""
+    df = pd.DataFrame({"age": [10.0, 10.0, 10.0, np.nan, 100.0]})
+
+    result = handle_missing_values(
+        df,
+        ["age"],
+        strategy="mean_median",
+        outlier_method="zscore",
+        outlier_threshold=10.0,
+    )
+
+    assert result["age"].isna().sum() == 0
+    assert result["age"].iloc[3] == 32.5
 
 
 def test_handle_missing_values_raises_on_bad_column():
@@ -319,6 +366,58 @@ def test_remove_outliers_unknown_method_raises():
 
     with pytest.raises(ValueError, match="Unknown method"):
         remove_outliers(df, "salary", method="percentile")
+
+
+def test_has_outliers_iqr_returns_true_for_extreme_values():
+    """IQR detection should report True when a column contains outliers."""
+    df = pd.DataFrame({"salary": [50, 52, 53, 51, 49, 200]})
+
+    result = has_outliers(df, "salary", method="iqr", threshold=1.5)
+
+    assert result is True, "Outlier detection should return True"
+
+
+def test_has_outliers_iqr_returns_false_when_no_outliers_exist():
+    """IQR detection should report False when all values are within bounds."""
+    df = pd.DataFrame({"salary": [50, 52, 53, 51, 49]})
+
+    result = has_outliers(df, "salary", method="iqr")
+
+    assert result is False, "Outlier detection should return False"
+
+
+def test_has_outliers_zscore_returns_true_for_extreme_values():
+    """Z-score detection should report True when a column contains outliers."""
+    df = pd.DataFrame({"salary": [10, 10, 10, 10, 100]})
+
+    result = has_outliers(df, "salary", method="zscore", threshold=1.5)
+
+    assert result is True, "Outlier detection should return True"
+
+
+def test_has_outliers_zscore_returns_false_for_constant_column():
+    """Constant columns should not report outliers for z-score detection."""
+    df = pd.DataFrame({"salary": [50, 50, 50, 50]})
+
+    result = has_outliers(df, "salary", method="zscore")
+
+    assert result is False, "Constant columns should not report outliers"
+
+
+def test_has_outliers_invalid_column_raises():
+    """Should raise ValueError for a column not in the dataframe."""
+    df = pd.DataFrame({"salary": [50, 52, 53]})
+
+    with pytest.raises(ValueError, match="not found in dataframe"):
+        has_outliers(df, "nonexistent_column")
+
+
+def test_has_outliers_unknown_method_raises():
+    """Should raise ValueError for an unrecognized detection method."""
+    df = pd.DataFrame({"salary": [50, 52, 53]})
+
+    with pytest.raises(ValueError, match="Unknown method"):
+        has_outliers(df, "salary", method="percentile")
 
 
 def test_validate_dataframe_returns_true_for_valid_input():

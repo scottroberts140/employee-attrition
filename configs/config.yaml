@@ -46,4 +46,7 @@ min_f1: 0.30
 random_forest_hp:
   n_estimators: 100
   max_depth: 10
+  additional_features_to_drop: []
+  default_missing_value_strategy_numeric: "median"
+  default_missing_value_strategy_categorical: "mode"
 
