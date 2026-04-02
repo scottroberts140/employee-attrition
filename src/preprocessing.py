@@ -2,14 +2,22 @@ import pandas as pd
 import numpy as np
 
 
-def fill_missing_with_median(df, columns):
-    """Fill missing values in specified columns with the column median."""
+def handle_missing_values(df, columns, strategy="median"):
+    """Handle missing values in specified columns using the requested strategy."""
     df = df.copy()
     for col in columns:
         if col not in df.columns:
             raise ValueError(f"Column '{col}' not found in dataframe")
-        median_val = df[col].median()
-        df[col] = df[col].fillna(median_val)
+
+    if strategy == "median":
+        for col in columns:
+            median_val = df[col].median()
+            df[col] = df[col].fillna(median_val)
+    elif strategy == "drop":
+        df = df.dropna(subset=columns)
+    else:
+        raise ValueError(f"Unknown strategy: {strategy}. Use 'median' or 'drop'")
+
     return df
 
 

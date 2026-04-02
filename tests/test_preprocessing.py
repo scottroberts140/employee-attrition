@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, "src")
 
 from preprocessing import (
-    fill_missing_with_median,
+    handle_missing_values,
     normalize_column,
     encode_binary_column,
     create_bins,
@@ -18,11 +18,11 @@ from preprocessing import (
 )
 
 
-def test_fill_missing_replaces_nulls():
+def test_handle_missing_values_median_replaces_nulls():
     """Median fill should replace NaN values with the column median."""
     df = pd.DataFrame({"age": [20.0, 30.0, np.nan, 40.0, 50.0]})
 
-    result = fill_missing_with_median(df, ["age"])
+    result = handle_missing_values(df, ["age"], strategy="median")
 
     assert (
         result["age"].isna().sum() == 0
@@ -32,45 +32,69 @@ def test_fill_missing_replaces_nulls():
     ), "Missing value should be filled with median (35.0)"
 
 
-def test_fill_missing_does_not_modify_original():
+def test_handle_missing_values_does_not_modify_original():
     """The original dataframe should not be changed."""
     df = pd.DataFrame({"age": [20.0, np.nan, 40.0]})
     original_null_count = df["age"].isna().sum()
 
-    fill_missing_with_median(df, ["age"])
+    handle_missing_values(df, ["age"], strategy="median")
 
     assert (
         df["age"].isna().sum() == original_null_count
     ), "Original dataframe should not be modified"
 
 
-def test_fill_missing_handles_no_nulls():
+def test_handle_missing_values_median_handles_no_nulls():
     """If there are no missing values, the data should be unchanged."""
     df = pd.DataFrame({"age": [20.0, 30.0, 40.0]})
 
-    result = fill_missing_with_median(df, ["age"])
+    result = handle_missing_values(df, ["age"], strategy="median")
 
     pd.testing.assert_frame_equal(result, df)
 
 
-def test_fill_missing_multiple_columns():
+def test_handle_missing_values_median_multiple_columns():
     """Should handle filling multiple columns at once."""
     df = pd.DataFrame(
         {"age": [20.0, np.nan, 40.0], "income": [50000.0, 60000.0, np.nan]}
     )
 
-    result = fill_missing_with_median(df, ["age", "income"])
+    result = handle_missing_values(df, ["age", "income"], strategy="median")
 
     assert result["age"].isna().sum() == 0
     assert result["income"].isna().sum() == 0
 
 
-def test_fill_missing_raises_on_bad_column():
+def test_handle_missing_values_raises_on_bad_column():
     """Should raise ValueError (invalid column)."""
     df = pd.DataFrame({"age": [20.0, 30.0]})
 
     with pytest.raises(ValueError, match="not found"):
-        fill_missing_with_median(df, ["nonexistent_column"])
+        handle_missing_values(df, ["nonexistent_column"], strategy="median")
+
+
+def test_handle_missing_values_drop_removes_rows_with_missing_values():
+    """Drop strategy should remove rows with missing values in the specified columns."""
+    df = pd.DataFrame(
+        {
+            "age": [20.0, np.nan, 40.0],
+            "income": [50000.0, 60000.0, np.nan],
+            "department": ["Sales", "HR", "IT"],
+        }
+    )
+
+    result = handle_missing_values(df, ["age", "income"], strategy="drop")
+
+    assert len(result) == 1, "Only rows without missing values should remain"
+    assert result.iloc[0]["department"] == "Sales"
+
+
+def test_handle_missing_values_raises_on_invalid_strategy():
+    """Should raise ValueError when the strategy is unsupported."""
+    df = pd.DataFrame({"age": [20.0, np.nan, 40.0]})
+
+    with pytest.raises(ValueError, match="Unknown strategy"):
+        handle_missing_values(df, ["age"], strategy="mode")
 
 
 def test_normalize_column_raises_on_bad_column():
