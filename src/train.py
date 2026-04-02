@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import pickle
+import yaml
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -17,38 +18,10 @@ from preprocessing import (
     check_data_quality,
 )
 
-# Configuration
-CONFIG = {
-    "data_url": "https://raw.githubusercontent.com/TripleTen-DS/Dataset/refs/heads/main/student_dropout_dataset.csv",
-    "target": "Dropout",
-    "test_size": 0.2,
-    "random_state": 42,
-    "n_estimators": 100,
-    "max_depth": 10,
-    "numeric_columns": [
-        "Age",
-        "Family_Income",
-        "Study_Hours_per_Day",
-        "Attendance_Rate",
-        "Assignment_Delay_Days",
-        "Travel_Time_Minutes",
-        "Stress_Index",
-        "GPA",
-        "Semester_GPA",
-        "CGPA",
-    ],
-    "categorical_columns": [
-        "Gender",
-        "Internet_Access",
-        "Part_Time_Job",
-        "Scholarship",
-        "Semester",
-        "Department",
-        "Parental_Education",
-    ],
-    "min_accuracy": 0.35,
-    "min_f1": 0.30,
-}
+
+def get_config():
+    with open("./configs/config.yaml", "r") as file:
+        return yaml.safe_load(file)
 
 
 def load_data(url):
@@ -59,17 +32,16 @@ def load_data(url):
     return df
 
 
-def train_model(config=None):
+def train_model():
     """Full training pipeline. Returns metrics dictionary."""
-    if config is None:
-        config = CONFIG
+    config = get_config()
 
     # Load
-    df = load_data(config["data_url"])
+    df = load_data(config["data_url_raw"])
 
-    # Drop ID column
-    if "Student_ID" in df.columns:
-        df = df.drop(columns=["Student_ID"])
+    # Drop Employee Number column
+    if "EmployeeNumber" in df.columns:
+        df = df.drop(columns=["EmployeeNumber"])
 
     # Validate
     required = (
@@ -152,17 +124,17 @@ def train_model(config=None):
         json.dump(metrics, f, indent=2)
     print(f"Metrics saved to {metrics_path}")
 
-    return metrics
+    return metrics, config
 
 
 if __name__ == "__main__":
-    metrics = train_model()
+    metrics, config = train_model()
 
     # Exit with error if thresholds not met
-    if metrics["accuracy"] < CONFIG["min_accuracy"]:
+    if metrics["accuracy"] < config["min_accuracy"]:
         print(f"\nFAILED: Accuracy below threshold")
         sys.exit(1)
-    if metrics["f1_score"] < CONFIG["min_f1"]:
+    if metrics["f1_score"] < config["min_f1"]:
         print(f"\nFAILED: F1 score below threshold")
         sys.exit(1)
 
