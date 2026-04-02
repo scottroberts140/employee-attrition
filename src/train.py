@@ -40,9 +40,8 @@ def train_model():
     # Load
     df = load_data(config["data_url_raw"])
 
-    # Drop Employee Number column
-    if "EmployeeNumber" in df.columns:
-        df = df.drop(columns=["EmployeeNumber"])
+    # Drop insignificant columns
+    df = df.drop(columns=config["columns_to_drop"])
 
     # Validate
     required = (
