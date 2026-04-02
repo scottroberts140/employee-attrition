@@ -16,6 +16,7 @@ from preprocessing import (
     clean_data,
     encode_categoricals,
     check_data_quality,
+    encode_binary_column,
 )
 
 
@@ -61,6 +62,9 @@ def train_model():
     # Encode
     df = encode_categoricals(df, config["categorical_columns"])
 
+    # Encode target column
+    df = encode_binary_column(df, "Attrition", "Yes")
+
     # Split
     X = df.drop(columns=[config["target"]])
     y = df[config["target"]]
@@ -84,16 +88,20 @@ def train_model():
 
     # Evaluate
     y_pred = model.predict(X_test)
+    accuracy = float(accuracy_score(y_test, y_pred))
+    precision = float(precision_score(y_test, y_pred))
+    recall = float(recall_score(y_test, y_pred))
+    f1 = float(f1_score(y_test, y_pred))
+
     metrics = {
-        "accuracy": round(accuracy_score(y_test, y_pred), 4),
-        "precision": round(precision_score(y_test, y_pred), 4),
-        "recall": round(recall_score(y_test, y_pred), 4),
-        "f1_score": round(f1_score(y_test, y_pred), 4),
+        "accuracy": round(accuracy, 4),
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1_score": round(f1, 4),
         "train_size": len(X_train),
         "test_size": len(X_test),
         "n_features": X_train.shape[1],
     }
-
     print(f"\nResults:")
     print(f"  Accuracy:  {metrics['accuracy']}")
     print(f"  Precision: {metrics['precision']}")
