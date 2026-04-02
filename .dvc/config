@@ -1,4 +1,4 @@
 [core]
     remote = localremote
 ['remote "localremote"']
-    url = /tmp/dvc-remote
+    url = ../../../../dvc-remote
