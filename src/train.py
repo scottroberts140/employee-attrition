@@ -79,8 +79,8 @@ def train_model():
     # Train
     print("Training random forest...")
     model = RandomForestClassifier(
-        n_estimators=config["random_forest_hp"]["n_estimators"],
-        max_depth=config["random_forest_hp"]["max_depth"],
+        n_estimators=config["random_forest_dials"]["n_estimators"],
+        max_depth=config["random_forest_dials"]["max_depth"],
         random_state=config["random_state"],
     )
     model.fit(X_train, y_train)
