@@ -4,9 +4,7 @@ data_url_processed: "./data/processed/WA_Fn-UseC_-HR-Employee-Attrition.CSV"
 target: "Attrition"
 test_size: 0.2
 random_state: 75
-n_estimators: 100
-max_depth: 10
-columns_to_drop:
+features_to_drop:
   - "EmployeeNumber"
 numeric_columns:
   - "Age"
@@ -45,3 +43,7 @@ categorical_columns:
   - "WorkLifeBalance"
 min_accuracy: 0.35
 min_f1: 0.30
+random_forest_hp:
+  n_estimators: 100
+  max_depth: 10
+

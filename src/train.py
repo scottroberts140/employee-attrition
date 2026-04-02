@@ -40,8 +40,8 @@ def train_model():
     # Load
     df = load_data(config["data_url_raw"])
 
-    # Drop insignificant columns
-    df = df.drop(columns=config["columns_to_drop"])
+    # Drop insignificant features
+    df = df.drop(columns=config["features_to_drop"])
 
     # Validate
     required = (
@@ -79,8 +79,8 @@ def train_model():
     # Train
     print("Training random forest...")
     model = RandomForestClassifier(
-        n_estimators=config["n_estimators"],
-        max_depth=config["max_depth"],
+        n_estimators=config["random_forest_hp"]["n_estimators"],
+        max_depth=config["random_forest_hp"]["max_depth"],
         random_state=config["random_state"],
     )
     model.fit(X_train, y_train)
