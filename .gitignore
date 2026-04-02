@@ -2,8 +2,12 @@
 models/
 metrics/
 data/*
-!data/**/raw/*.dvc
-!data/**/processed/*.dvc
+!data/raw/
+!data/processed/
+data/raw/*
+data/processed/*
+!data/raw/*.dvc
+!data/processed/*.dvc
 *.pkl
 *.joblib
 *.h5
