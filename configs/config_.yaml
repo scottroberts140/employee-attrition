@@ -1,4 +1,4 @@
-# Training settings
+# Default settings for training
 data_url_raw: "./data/raw/WA_Fn-UseC_-HR-Employee-Attrition.CSV"
 data_url_processed: "./data/processed/WA_Fn-UseC_-HR-Employee-Attrition.CSV"
 target: "Attrition"
@@ -37,17 +37,7 @@ categorical_columns:
   - "RelationshipSatisfaction"
   - "StockOptionLevel"
   - "WorkLifeBalance"
-default_dials:
-  test_size: 0.2
-  random_state: 75
-  features_to_drop:
-    - "EmployeeNumber"
-  missing_value_strategy_numeric: "median"
-  missing_value_strategy_categorical: "mode"
-  min_accuracy: 0.35
-  min_f1: 0.30
-random_forest_dials:
-  n_estimators: 100
-  max_depth: 10
-  additional_features_to_drop: []
-
+test_size: 0.2
+random_state: 75
+features_to_drop:
+  - "EmployeeNumber"
