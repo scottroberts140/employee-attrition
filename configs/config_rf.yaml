@@ -1,11 +1,15 @@
 _global_:
+  model_type: "RF"
   missing_value_strategy_numeric: "median"
   missing_value_strategy_categorical: "mode"
   n_estimators: 100
   max_depth: 10
   additional_features_to_drop: []
-  min_accuracy: 0.35
-  min_f1: 0.30
+  metrics:
+    accuracy: 0.35
+    f1: 0.30
+    precision:
+    recall:
 
 baseline:
   title: "Random Forest Baseline"

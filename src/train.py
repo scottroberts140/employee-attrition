@@ -1,13 +1,9 @@
 import pandas as pd
-import numpy as np
-import json
 import os
 import sys
-import pickle
-import yaml
+from typing import Type
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 # Add src to path so we can import preprocessing
 sys.path.insert(0, os.path.dirname(__file__))
@@ -19,10 +15,11 @@ from preprocessing import (
     encode_binary_column,
 )
 
-
-def get_config():
-    with open("./configs/config.yaml", "r") as file:
-        return yaml.safe_load(file)
+MODEL_TYPES = [
+    "RF",
+    "LR",
+    "GB",
+]
 
 
 def load_data(url):
@@ -33,116 +30,71 @@ def load_data(url):
     return df
 
 
-def train_model():
-    """Full training pipeline. Returns metrics dictionary."""
-    config = get_config()
+def get_model_params(model_class: Type, config: dict) -> dict:
+    """Return only the configuration keys accepted by the model class."""
+    valid_params = model_class().get_params().keys()
+    return {key: value for key, value in config.items() if key in valid_params}
 
+
+def train_model(model_configs: dict):
     # Load
-    df = load_data(config["data_url_raw"])
+    df = load_data(model_configs["data_url_raw"])
 
     # Drop insignificant features
-    df = df.drop(columns=config["features_to_drop"])
+    df = df.drop(columns=model_configs["features_to_drop"])
 
     # Validate
     required = (
-        config["numeric_columns"] + config["categorical_columns"] + [config["target"]]
+        model_configs["numeric_columns"]
+        + model_configs["categorical_columns"]
+        + [model_configs["target"]]
     )
-    validate_dataframe(df, required, config["target"])
+    validate_dataframe(df, required, model_configs["target"])
 
     # Data quality check
-    quality = check_data_quality(df, config["numeric_columns"])
+    quality = check_data_quality(df, model_configs["numeric_columns"])
     print(
         f"Data quality: {quality['total_nulls']} nulls, {quality['duplicate_rows']} duplicates"
     )
 
     # Clean
-    df = clean_data(df, config["numeric_columns"], config["categorical_columns"])
+    df = clean_data(
+        df, model_configs["numeric_columns"], model_configs["categorical_columns"]
+    )
 
     # Encode
-    df = encode_categoricals(df, config["categorical_columns"])
+    df = encode_categoricals(df, model_configs["categorical_columns"])
 
     # Encode target column
-    df = encode_binary_column(df, "Attrition", "Yes")
+    df = encode_binary_column(df, model_configs["target"], "Yes")
 
     # Split
-    X = df.drop(columns=[config["target"]])
-    y = df[config["target"]]
+    X = df.drop(columns=[model_configs["target"]])
+    y = df[model_configs["target"]]
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
-        test_size=config["test_size"],
-        random_state=config["random_state"],
+        test_size=model_configs["test_size"],
+        random_state=model_configs["random_state"],
         stratify=y,
     )
     print(f"Train: {len(X_train)} rows, Test: {len(X_test)} rows")
 
     # Train
-    print("Training random forest...")
-    model = RandomForestClassifier(
-        n_estimators=config["random_forest_dials"]["n_estimators"],
-        max_depth=config["random_forest_dials"]["max_depth"],
-        random_state=config["random_state"],
-    )
-    model.fit(X_train, y_train)
+    model_type = model_configs["model_type"]
+    print(f"Training model type '{model_type}' ...")
 
-    # Evaluate
-    y_pred = model.predict(X_test)
-    accuracy = float(accuracy_score(y_test, y_pred))
-    precision = float(precision_score(y_test, y_pred))
-    recall = float(recall_score(y_test, y_pred))
-    f1 = float(f1_score(y_test, y_pred))
-
-    metrics = {
-        "accuracy": round(accuracy, 4),
-        "precision": round(precision, 4),
-        "recall": round(recall, 4),
-        "f1_score": round(f1, 4),
-        "train_size": len(X_train),
-        "test_size": len(X_test),
-        "n_features": X_train.shape[1],
-    }
-    print(f"\nResults:")
-    print(f"  Accuracy:  {metrics['accuracy']}")
-    print(f"  Precision: {metrics['precision']}")
-    print(f"  Recall:    {metrics['recall']}")
-    print(f"  F1 Score:  {metrics['f1_score']}")
-
-    # Check thresholds
-    if metrics["accuracy"] < config["min_accuracy"]:
-        print(
-            f"\nWARNING: Accuracy {metrics['accuracy']} is below threshold {config['min_accuracy']}"
-        )
-    if metrics["f1_score"] < config["min_f1"]:
-        print(
-            f"\nWARNING: F1 {metrics['f1_score']} is below threshold {config['min_f1']}"
+    if model_type == "RF":
+        model_params = get_model_params(RandomForestClassifier, model_configs)
+        model = RandomForestClassifier(**model_params)
+        model.fit(X_train, y_train)
+    # elif model_type == "LR":
+    #     model = None
+    # elif model_type == "GB":
+    #     model = None
+    else:
+        raise NotImplementedError(
+            (f"Training for model type '{model_type}' not implemented")
         )
 
-    # Save model
-    os.makedirs("models", exist_ok=True)
-    model_path = "models/model.pkl"
-    with open(model_path, "wb") as f:
-        pickle.dump(model, f)
-    print(f"\nModel saved to {model_path}")
-
-    # Save metrics
-    os.makedirs("metrics", exist_ok=True)
-    metrics_path = "metrics/results.json"
-    with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
-    print(f"Metrics saved to {metrics_path}")
-
-    return metrics, config
-
-
-if __name__ == "__main__":
-    metrics, config = train_model()
-
-    # Exit with error if thresholds not met
-    if metrics["accuracy"] < config["min_accuracy"]:
-        print(f"\nFAILED: Accuracy below threshold")
-        sys.exit(1)
-    if metrics["f1_score"] < config["min_f1"]:
-        print(f"\nFAILED: F1 score below threshold")
-        sys.exit(1)
-
-    print("\nAll thresholds passed!")
+    return model, X_train, y_train, X_test, y_test

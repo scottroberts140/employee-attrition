@@ -1,6 +1,6 @@
 configs_to_run: [
   {
-    file: "config_rf.yaml",
+    file: "config_rf",
     configurations: []
   },
 ]
