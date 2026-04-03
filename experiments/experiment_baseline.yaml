@@ -1,6 +1,11 @@
-configs_to_run: [
-  {
-    file: "config_rf",
-    configurations: []
-  },
-]
+dataset_config: "employee_attrition"
+
+experiments:
+  baseline:
+    title: "Employee Attrition Baseline"
+    description: "Baseline experiment for the employee attrition dataset."
+    defaults:
+      save_local_artifacts: false
+    models:
+      - file: "rf"
+        configurations: []

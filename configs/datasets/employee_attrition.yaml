@@ -1,4 +1,4 @@
-# Default settings for training
+# Shared dataset settings for employee attrition experiments
 data_url_raw: "./data/raw/WA_Fn-UseC_-HR-Employee-Attrition.CSV"
 data_url_processed: "./data/processed/WA_Fn-UseC_-HR-Employee-Attrition.CSV"
 target: "Attrition"

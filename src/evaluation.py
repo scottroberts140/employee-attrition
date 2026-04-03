@@ -1,6 +1,3 @@
-import json
-import os
-import pickle
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -56,16 +53,4 @@ def evaluate_model(model, X_train, X_test, y_test, model_configs: dict):
     for metric_name, metric_value in metrics.items():
         print(f"  {metric_name}: {metric_value}")
 
-    # Save model
-    os.makedirs("models", exist_ok=True)
-    model_path = "models/model.pkl"
-    with open(model_path, "wb") as f:
-        pickle.dump(model, f)
-    print(f"\nModel saved to {model_path}")
-
-    # Save metrics
-    os.makedirs("metrics", exist_ok=True)
-    metrics_path = "metrics/results.json"
-    with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
-    print(f"Metrics saved to {metrics_path}")
+    return metrics
