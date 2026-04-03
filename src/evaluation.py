@@ -8,6 +8,34 @@ from sklearn.metrics import (
 
 
 def evaluate_model(model, X_train, X_test, y_test, model_configs: dict):
+    """Evaluate a trained model using the metrics requested in the run config.
+
+    Parameters
+    ----------
+    model : object
+        Trained model that supports ``predict`` and, when needed, ``predict_proba``.
+    X_train : pandas.DataFrame
+        Training feature matrix used to report metadata such as feature count and
+        training set size.
+    X_test : pandas.DataFrame
+        Test feature matrix used for prediction.
+    y_test : pandas.Series or array-like
+        True target values for the test set.
+    model_configs : dict
+        Merged run configuration containing the ``metrics`` section that controls
+        which evaluation metrics are computed and which thresholds are enforced.
+
+    Returns
+    -------
+    dict
+        Dictionary containing always-reported run metadata (`train_size`,
+        `test_size`, and `n_features`) plus any requested evaluation metrics.
+
+    Examples
+    --------
+    >>> metrics = evaluate_model(model, X_train, X_test, y_test, {"metrics": {"accuracy": 0.8, "f1": None}})
+    >>> metrics["accuracy"]
+    """
     requested_metrics = model_configs.get("metrics", {})
     metric_functions = {
         "accuracy": lambda y_true, y_pred, y_prob: float(
