@@ -2,8 +2,9 @@ import pandas as pd
 import os
 import sys
 from typing import Type
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
 
 # Add src to path so we can import preprocessing
 sys.path.insert(0, os.path.dirname(__file__))
@@ -93,29 +94,39 @@ def train_model(model_configs: dict):
     df = load_data(model_configs["data_url_raw"])
 
     # Drop insignificant features
-    df = df.drop(columns=model_configs["features_to_drop"])
+    columns_to_drop = model_configs["features_to_drop"] + model_configs.get(
+        "additional_features_to_drop", []
+    )
+    df = df.drop(columns=columns_to_drop)
+
+    active_numeric_columns = [
+        column
+        for column in model_configs["numeric_columns"]
+        if column not in columns_to_drop
+    ]
+    active_categorical_columns = [
+        column
+        for column in model_configs["categorical_columns"]
+        if column not in columns_to_drop
+    ]
 
     # Validate
     required = (
-        model_configs["numeric_columns"]
-        + model_configs["categorical_columns"]
-        + [model_configs["target"]]
+        active_numeric_columns + active_categorical_columns + [model_configs["target"]]
     )
     validate_dataframe(df, required, model_configs["target"])
 
     # Data quality check
-    quality = check_data_quality(df, model_configs["numeric_columns"])
+    quality = check_data_quality(df, active_numeric_columns)
     print(
         f"Data quality: {quality['total_nulls']} nulls, {quality['duplicate_rows']} duplicates"
     )
 
     # Clean
-    df = clean_data(
-        df, model_configs["numeric_columns"], model_configs["categorical_columns"]
-    )
+    df = clean_data(df, active_numeric_columns, active_categorical_columns)
 
     # Encode
-    df = encode_categoricals(df, model_configs["categorical_columns"])
+    df = encode_categoricals(df, active_categorical_columns)
 
     # Encode target column
     df = encode_binary_column(df, model_configs["target"], "Yes")
@@ -140,10 +151,14 @@ def train_model(model_configs: dict):
         model_params = get_model_params(RandomForestClassifier, model_configs)
         model = RandomForestClassifier(**model_params)
         model.fit(X_train, y_train)
-    # elif model_type == "LR":
-    #     model = None
-    # elif model_type == "GB":
-    #     model = None
+    elif model_type == "LR":
+        model_params = get_model_params(LogisticRegression, model_configs)
+        model = LogisticRegression(**model_params)
+        model.fit(X_train, y_train)
+    elif model_type == "GB":
+        model_params = get_model_params(GradientBoostingClassifier, model_configs)
+        model = GradientBoostingClassifier(**model_params)
+        model.fit(X_train, y_train)
     else:
         raise NotImplementedError(
             (f"Training for model type '{model_type}' not implemented")

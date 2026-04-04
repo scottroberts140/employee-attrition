@@ -5,7 +5,8 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
 sys.path.insert(0, "src")
 
@@ -313,6 +314,76 @@ def test_train_model_trains_random_forest_on_synthetic_data(monkeypatch):
     assert len(y_test) == 3
     assert "Attrition" not in X_train.columns
     assert X_train.shape[1] >= 2
+
+
+def test_train_model_trains_logistic_regression_on_synthetic_data(monkeypatch):
+    df = pd.DataFrame(
+        {
+            "Age": [25, 30, 35, 40, 45, 50],
+            "Dept": ["Sales", "HR", "Sales", "HR", "Sales", "HR"],
+            "Attrition": ["Yes", "No", "Yes", "No", "Yes", "No"],
+        }
+    )
+
+    monkeypatch.setattr(train, "load_data", lambda url: df)
+
+    config = {
+        "data_url_raw": "./unused.csv",
+        "features_to_drop": [],
+        "numeric_columns": ["Age"],
+        "categorical_columns": ["Dept"],
+        "target": "Attrition",
+        "test_size": 0.5,
+        "random_state": 0,
+        "model_type": "LR",
+        "solver": "liblinear",
+        "max_iter": 200,
+        "C": 1.0,
+        "penalty": "l2",
+    }
+
+    model, X_train, y_train, X_test, y_test = train.train_model(config)
+
+    assert isinstance(model, LogisticRegression)
+    assert len(X_train) == 3
+    assert len(X_test) == 3
+    assert "Attrition" not in X_train.columns
+
+
+def test_train_model_trains_gradient_boosting_with_additional_feature_drop(monkeypatch):
+    df = pd.DataFrame(
+        {
+            "Age": [25, 30, 35, 40, 45, 50],
+            "MonthlyIncome": [3000, 3200, 3400, 3600, 3800, 4000],
+            "Dept": ["Sales", "HR", "Sales", "HR", "Sales", "HR"],
+            "Attrition": ["Yes", "No", "Yes", "No", "Yes", "No"],
+        }
+    )
+
+    monkeypatch.setattr(train, "load_data", lambda url: df)
+
+    config = {
+        "data_url_raw": "./unused.csv",
+        "features_to_drop": [],
+        "additional_features_to_drop": ["MonthlyIncome"],
+        "numeric_columns": ["Age", "MonthlyIncome"],
+        "categorical_columns": ["Dept"],
+        "target": "Attrition",
+        "test_size": 0.5,
+        "random_state": 0,
+        "model_type": "GB",
+        "learning_rate": 0.1,
+        "n_estimators": 10,
+        "max_depth": 2,
+    }
+
+    model, X_train, y_train, X_test, y_test = train.train_model(config)
+
+    assert isinstance(model, GradientBoostingClassifier)
+    assert len(X_train) == 3
+    assert len(X_test) == 3
+    assert "MonthlyIncome" not in X_train.columns
+    assert "Attrition" not in X_train.columns
 
 
 def test_run_experiment_logs_to_mlflow_and_skips_local_saves_when_disabled(
