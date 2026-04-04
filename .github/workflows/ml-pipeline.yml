@@ -67,13 +67,8 @@ jobs:
         run: |
           python src/experiment.py \
             --suite initial \
-            --scenario initial \
-            --model-file rf \
-            --configuration baseline \
-            --fail-on-thresholds \
-            --save-local-artifacts \
-            --model-output-path models/model.pkl \
-            --metrics-output-path metrics/results.json
+            --scenario ci \
+            --fail-on-thresholds
 
       - name: Upload metrics as artifact
         if: always()

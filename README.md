@@ -133,6 +133,12 @@ Run one scenario from a suite:
 python src/experiment.py --suite initial --scenario initial
 ```
 
+Run the dedicated CI scenario:
+
+```bash
+python src/experiment.py --suite initial --scenario ci --fail-on-thresholds
+```
+
 What happens during a run:
 
 - the suite, dataset, and model configs are merged
@@ -264,7 +270,17 @@ The tests cover:
 
 ## Current Experiment Set
 
-The active suite in `experiments/initial.yaml` defines a single scenario named `initial` that currently includes:
+The active suite in `experiments/initial.yaml` defines two scenarios:
+
+- `initial`: the broader comparison scenario that includes all named Random Forest, Logistic Regression, and Gradient Boosting configurations.
+- `ci`: a stable single-run scenario used by GitHub Actions.
+
+The `ci` scenario runs:
+
+- the `baseline` configuration from `rf.yaml`
+- with local artifact output enabled for `models/model.pkl` and `metrics/results.json`
+
+The `initial` scenario includes:
 
 - all named Random Forest configurations from `rf.yaml`
 - all named Logistic Regression configurations from `lr.yaml`

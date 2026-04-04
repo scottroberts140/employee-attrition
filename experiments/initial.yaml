@@ -13,3 +13,16 @@ scenarios:
         configurations: []
       - file: "gb"
         configurations: []
+
+  ci:
+    title: "CI Validation"
+    description: "Stable single-run scenario used by the GitHub Actions pipeline."
+    defaults:
+      save_local_artifacts: true
+      local_output_paths:
+        model: "models/model.pkl"
+        metrics: "metrics/results.json"
+    models:
+      - file: "rf"
+        configurations:
+          - "baseline"
