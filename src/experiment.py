@@ -18,7 +18,7 @@ from train import (
     MODEL_TYPES,
 )
 
-from evaluation import evaluate_model
+from evaluation import evaluate_model, get_threshold_failures
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -227,7 +227,10 @@ def get_model_config_file(dataset_name: str, model_config_name: str) -> Path:
 
 
 def get_model_configurations(
-    suite: dict, scenario_name: str | None = None
+    suite: dict,
+    scenario_name: str | None = None,
+    model_config_name: str | None = None,
+    configuration_name: str | None = None,
 ) -> list[dict]:
     """Build merged model configurations for one or more scenarios in a suite file.
 
@@ -237,6 +240,10 @@ def get_model_configurations(
         Suite definition containing dataset, scenario, and model references.
     scenario_name : str | None, default=None
         Specific scenario to run. When omitted, all scenarios are included.
+    model_config_name : str | None, default=None
+        Specific model config file to include, such as ``rf`` or ``lr``.
+    configuration_name : str | None, default=None
+        Specific named configuration inside the selected model config file.
 
     Returns
     -------
@@ -248,6 +255,7 @@ def get_model_configurations(
     >>> suite = get_suite("initial")
     >>> get_model_configurations(suite)
     >>> get_model_configurations(suite, scenario_name="initial")
+    >>> get_model_configurations(suite, scenario_name="initial", model_config_name="rf", configuration_name="baseline")
     """
     exp_model_configs = []
     dataset_name = suite["dataset_config"]
@@ -269,10 +277,19 @@ def get_model_configurations(
 
         for model_entry in model_entries:
             model_configs_file = model_entry["file"]
+            if (
+                model_config_name is not None
+                and model_configs_file != model_config_name
+            ):
+                continue
+
             model_config_path = get_model_config_file(dataset_name, model_configs_file)
             model_configs = load_yaml(model_config_path)
 
             configurations = model_entry.get("configurations", [])
+            if configuration_name is not None:
+                configurations = [configuration_name]
+
             include_all = len(configurations) == 0
             global_model_configs = model_configs.get("_global_", {})
             model_type = global_model_configs.get("model_type")
@@ -298,7 +315,45 @@ def get_model_configurations(
                     exp_model_config["run_name"] = mc_value.get("title", mc_key)
                     exp_model_configs.append(exp_model_config)
 
+    if not exp_model_configs and (
+        model_config_name is not None or configuration_name is not None
+    ):
+        filters = []
+        if scenario_name is not None:
+            filters.append(f"scenario='{scenario_name}'")
+        if model_config_name is not None:
+            filters.append(f"model_file='{model_config_name}'")
+        if configuration_name is not None:
+            filters.append(f"configuration='{configuration_name}'")
+        raise ValueError(
+            "No model configurations matched the requested filters: "
+            + ", ".join(filters)
+        )
+
     return exp_model_configs
+
+
+def format_threshold_failures(failures: dict[str, dict[str, float]]) -> str:
+    """Return a concise string describing failed metric thresholds.
+
+    Parameters
+    ----------
+    failures : dict[str, dict[str, float]]
+        Threshold failures returned by ``get_threshold_failures``.
+
+    Returns
+    -------
+    str
+        Human-readable summary of failed metrics.
+
+    Examples
+    --------
+    >>> format_threshold_failures({"accuracy": {"value": 0.7, "threshold": 0.8}})
+    """
+    return ", ".join(
+        f"{metric_name}={failure['value']:.4f} < {failure['threshold']:.4f}"
+        for metric_name, failure in failures.items()
+    )
 
 
 def get_scenario_title(suite_name: str, scenario_name: str) -> str:
@@ -730,7 +785,13 @@ def get_local_output_path(model_config: dict, artifact_type: str) -> Path:
     return PROJECT_ROOT / configured_path
 
 
-def run_experiment(suite_name: str, scenario_name: str | None = None):
+def run_experiment(
+    suite_name: str,
+    scenario_name: str | None = None,
+    model_config_name: str | None = None,
+    configuration_name: str | None = None,
+    fail_on_thresholds: bool = False,
+):
     """Run every configured model for one or more scenarios in a suite file.
 
     Parameters
@@ -739,6 +800,12 @@ def run_experiment(suite_name: str, scenario_name: str | None = None):
         Suite filename without the ``.yaml`` extension.
     scenario_name : str | None, default=None
         Specific scenario to run. When omitted, all scenarios are run.
+    model_config_name : str | None, default=None
+        Specific model config file to include, such as ``rf`` or ``lr``.
+    configuration_name : str | None, default=None
+        Specific named configuration to run from the selected model config file.
+    fail_on_thresholds : bool, default=False
+        When ``True``, raise an error if any configured metric threshold is not met.
 
     Returns
     -------
@@ -750,9 +817,15 @@ def run_experiment(suite_name: str, scenario_name: str | None = None):
     --------
     >>> run_experiment("initial")
     >>> run_experiment("initial", scenario_name="initial")
+    >>> run_experiment("initial", scenario_name="initial", model_config_name="rf", configuration_name="baseline", fail_on_thresholds=True)
     """
     suite = get_suite(suite_name)
-    exp_model_configs = get_model_configurations(suite, scenario_name=scenario_name)
+    exp_model_configs = get_model_configurations(
+        suite,
+        scenario_name=scenario_name,
+        model_config_name=model_config_name,
+        configuration_name=configuration_name,
+    )
 
     tracking_uri = configure_mlflow_tracking()
     print(f"MLflow tracking URI set to: {tracking_uri}")
@@ -769,6 +842,13 @@ def run_experiment(suite_name: str, scenario_name: str | None = None):
             mlflow.log_metrics(metrics)
             mlflow_sklearn.log_model(model, name="model")
 
+            threshold_failures = get_threshold_failures(metrics, emc)
+            if fail_on_thresholds and threshold_failures:
+                failure_message = format_threshold_failures(threshold_failures)
+                raise RuntimeError(
+                    f"Run '{emc['run_name']}' did not meet configured thresholds: {failure_message}"
+                )
+
             if should_save_local_artifacts(emc):
                 save_model(model, get_local_output_path(emc, "model"))
                 save_metrics(metrics, get_local_output_path(emc, "metrics"))
@@ -784,6 +864,19 @@ if __name__ == "__main__":
         "--scenario",
         required=False,
         help="Optional scenario name within the suite to run",
+    )
+    parser.add_argument(
+        "--model-file",
+        help="Optional model config filename without the .yaml extension, such as rf or lr",
+    )
+    parser.add_argument(
+        "--configuration",
+        help="Optional named configuration within the selected model config file",
+    )
+    parser.add_argument(
+        "--fail-on-thresholds",
+        action="store_true",
+        help="Exit with a non-zero status if any configured metric threshold is not met",
     )
     parser.add_argument(
         "--analyze",
@@ -808,6 +901,9 @@ if __name__ == "__main__":
         help="Number of top runs to show in analyze mode",
     )
     args = parser.parse_args()
+
+    if args.configuration is not None and args.model_file is None:
+        parser.error("--configuration requires --model-file")
 
     if args.analyze:
         if args.metric is None:
@@ -837,4 +933,10 @@ if __name__ == "__main__":
         if args.suite is None:
             parser.error("--suite is required unless --analyze is used")
 
-        run_experiment(args.suite, scenario_name=args.scenario)
+        run_experiment(
+            args.suite,
+            scenario_name=args.scenario,
+            model_config_name=args.model_file,
+            configuration_name=args.configuration,
+            fail_on_thresholds=args.fail_on_thresholds,
+        )

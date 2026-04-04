@@ -7,6 +7,43 @@ from sklearn.metrics import (
 )
 
 
+def get_threshold_failures(
+    metrics: dict, model_configs: dict
+) -> dict[str, dict[str, float]]:
+    """Return metrics that did not meet configured thresholds.
+
+    Parameters
+    ----------
+    metrics : dict
+        Computed metric values from ``evaluate_model``.
+    model_configs : dict
+        Run configuration containing requested metrics and thresholds.
+
+    Returns
+    -------
+    dict[str, dict[str, float]]
+        Mapping of metric names to the observed value and configured threshold.
+
+    Examples
+    --------
+    >>> get_threshold_failures({"accuracy": 0.7}, {"metrics": {"accuracy": 0.8}})
+    """
+    failures = {}
+
+    for metric_name, threshold in model_configs.get("metrics", {}).items():
+        if threshold is None or metric_name not in metrics:
+            continue
+
+        metric_value = float(metrics[metric_name])
+        if metric_value < threshold:
+            failures[metric_name] = {
+                "value": metric_value,
+                "threshold": float(threshold),
+            }
+
+    return failures
+
+
 def evaluate_model(model, X_train, X_test, y_test, model_configs: dict):
     """Evaluate a trained model using the metrics requested in the run config.
 
@@ -72,10 +109,11 @@ def evaluate_model(model, X_train, X_test, y_test, model_configs: dict):
         metric_value = metric_functions[metric_name](y_test, y_pred, y_prob)
         metrics[metric_name] = round(metric_value, 4)
 
-        if threshold is not None and metric_value < threshold:
-            print(
-                f"\nWARNING: {metric_name} {metrics[metric_name]} is below threshold {threshold}"
-            )
+    threshold_failures = get_threshold_failures(metrics, model_configs)
+    for metric_name, failure in threshold_failures.items():
+        print(
+            f"\nWARNING: {metric_name} {failure['value']:.4f} is below threshold {failure['threshold']}"
+        )
 
     print(f"\nResults:")
     for metric_name, metric_value in metrics.items():

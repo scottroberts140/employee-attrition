@@ -11,7 +11,7 @@ from sklearn.linear_model import LogisticRegression
 sys.path.insert(0, "src")
 
 import experiment
-from evaluation import evaluate_model
+from evaluation import evaluate_model, get_threshold_failures
 import train
 from train import get_model_params
 
@@ -199,6 +199,77 @@ baseline:
     assert len(results) == 1
     assert results[0]["scenario_name"] == "second"
     assert results[0]["experiment_title"] == "Second"
+
+
+def test_get_model_configurations_filters_to_model_file_and_configuration(
+    tmp_path, monkeypatch
+):
+    dataset_dir = tmp_path / "configs" / "datasets"
+    model_dir = tmp_path / "configs" / "models" / "toy_dataset"
+    dataset_dir.mkdir(parents=True)
+    model_dir.mkdir(parents=True)
+
+    (dataset_dir / "toy_dataset.yaml").write_text(
+        """
+target: "Attrition"
+data_url_raw: "./toy.csv"
+numeric_columns: ["Age"]
+categorical_columns: ["Dept"]
+features_to_drop: []
+test_size: 0.2
+random_state: 75
+""".strip()
+    )
+    (model_dir / "rf.yaml").write_text(
+        """
+_global_:
+    model_type: "RF"
+
+baseline:
+    title: "RF Baseline"
+
+deep:
+    title: "RF Deep"
+    max_depth: 10
+""".strip()
+    )
+    (model_dir / "lr.yaml").write_text(
+        """
+_global_:
+    model_type: "LR"
+
+baseline:
+    title: "LR Baseline"
+""".strip()
+    )
+
+    monkeypatch.setattr(experiment, "DATASET_CONFIG_DIR", dataset_dir)
+    monkeypatch.setattr(experiment, "MODEL_CONFIG_DIR", tmp_path / "configs" / "models")
+
+    suite = {
+        "dataset_config": "toy_dataset",
+        "scenarios": {
+            "baseline": {
+                "title": "Baseline",
+                "models": [
+                    {"file": "rf", "configurations": []},
+                    {"file": "lr", "configurations": []},
+                ],
+            }
+        },
+    }
+
+    results = experiment.get_model_configurations(
+        suite,
+        scenario_name="baseline",
+        model_config_name="rf",
+        configuration_name="deep",
+    )
+
+    assert len(results) == 1
+    assert results[0]["model_type"] == "RF"
+    assert results[0]["run_name"] == "RF Deep"
+    assert results[0]["max_depth"] == 10
 
 
 def test_get_scenario_title_returns_title_for_requested_scenario(monkeypatch):
@@ -430,6 +501,30 @@ def test_evaluate_model_warns_only_for_metrics_with_thresholds(capsys):
     assert "WARNING: precision" not in output
 
 
+def test_get_threshold_failures_returns_only_failed_thresholds():
+    metrics = {
+        "accuracy": 0.79,
+        "f1": 0.51,
+        "precision": 0.7,
+    }
+    config = {
+        "metrics": {
+            "accuracy": 0.8,
+            "f1": 0.5,
+            "precision": None,
+        }
+    }
+
+    result = get_threshold_failures(metrics, config)
+
+    assert result == {
+        "accuracy": {
+            "value": 0.79,
+            "threshold": 0.8,
+        }
+    }
+
+
 def test_evaluate_model_raises_for_unknown_metric():
     model = PredictOnlyModel(predictions=[0, 1])
     X_train = pd.DataFrame({"x1": [0, 1]})
@@ -598,7 +693,9 @@ def test_run_experiment_logs_to_mlflow_and_skips_local_saves_when_disabled(
     monkeypatch.setattr(
         experiment,
         "get_model_configurations",
-        lambda exp, scenario_name=None: [run_config],
+        lambda exp, scenario_name=None, model_config_name=None, configuration_name=None: [
+            run_config
+        ],
     )
     monkeypatch.setattr(
         experiment,
@@ -712,7 +809,9 @@ def test_run_experiment_saves_local_artifacts_with_custom_paths(monkeypatch):
     monkeypatch.setattr(
         experiment,
         "get_model_configurations",
-        lambda exp, scenario_name=None: [run_config],
+        lambda exp, scenario_name=None, model_config_name=None, configuration_name=None: [
+            run_config
+        ],
     )
     monkeypatch.setattr(
         experiment,
@@ -762,3 +861,72 @@ def test_run_experiment_saves_local_artifacts_with_custom_paths(monkeypatch):
         saved_paths["metrics"]
         == experiment.PROJECT_ROOT / "metrics/custom/toy_metrics.json"
     )
+
+
+def test_run_experiment_raises_when_fail_on_thresholds_enabled(monkeypatch):
+    run_config = {
+        "experiment_title": "Toy Experiment",
+        "run_name": "baseline",
+        "save_local_artifacts": False,
+        "metrics": {"accuracy": 0.9},
+        "model_type": "RF",
+    }
+    returned_metrics = {
+        "train_size": 3,
+        "test_size": 2,
+        "n_features": 1,
+        "accuracy": 0.7,
+    }
+    dummy_model = object()
+    X_train = pd.DataFrame({"x1": [0, 1, 0]})
+    y_train = pd.Series([0, 1, 0])
+    X_test = pd.DataFrame({"x1": [0, 1]})
+    y_test = pd.Series([0, 1])
+
+    class DummyRun:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(experiment, "get_suite", lambda exp: {"stub": True})
+    monkeypatch.setattr(
+        experiment,
+        "get_model_configurations",
+        lambda exp, scenario_name=None, model_config_name=None, configuration_name=None: [
+            run_config
+        ],
+    )
+    monkeypatch.setattr(
+        experiment,
+        "train_model",
+        lambda config: (dummy_model, X_train, y_train, X_test, y_test),
+    )
+    monkeypatch.setattr(
+        experiment,
+        "evaluate_model",
+        lambda model, Xtr, Xte, yte, config: returned_metrics,
+    )
+    monkeypatch.setattr(
+        experiment,
+        "get_threshold_failures",
+        lambda metrics, config: {"accuracy": {"value": 0.7, "threshold": 0.9}},
+    )
+    monkeypatch.setattr(experiment, "get_data_version_info", lambda config: {})
+    monkeypatch.setattr(experiment.mlflow, "set_tracking_uri", lambda uri: None)
+    monkeypatch.setattr(
+        experiment.mlflow, "get_tracking_uri", lambda: "file:///tmp/mlruns"
+    )
+    monkeypatch.setattr(experiment.mlflow, "set_experiment", lambda name: None)
+    monkeypatch.setattr(experiment.mlflow, "log_params", lambda params: None)
+    monkeypatch.setattr(experiment.mlflow, "log_metrics", lambda metrics: None)
+    monkeypatch.setattr(
+        experiment.mlflow, "start_run", lambda run_name=None: DummyRun()
+    )
+    monkeypatch.setattr(
+        experiment.mlflow_sklearn, "log_model", lambda model, name: None
+    )
+
+    with pytest.raises(RuntimeError, match="did not meet configured thresholds"):
+        experiment.run_experiment("initial", fail_on_thresholds=True)
