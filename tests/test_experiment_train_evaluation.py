@@ -863,6 +863,21 @@ def test_run_experiment_saves_local_artifacts_with_custom_paths(monkeypatch):
     )
 
 
+def test_apply_runtime_overrides_enables_local_artifacts_and_paths():
+    result = experiment.apply_runtime_overrides(
+        {"save_local_artifacts": False},
+        save_local_artifacts=True,
+        model_output_path="models/ci/model.pkl",
+        metrics_output_path="metrics/ci/results.json",
+    )
+
+    assert result["save_local_artifacts"] is True
+    assert result["local_output_paths"] == {
+        "model": "models/ci/model.pkl",
+        "metrics": "metrics/ci/results.json",
+    }
+
+
 def test_run_experiment_raises_when_fail_on_thresholds_enabled(monkeypatch):
     run_config = {
         "experiment_title": "Toy Experiment",

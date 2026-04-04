@@ -356,6 +356,50 @@ def format_threshold_failures(failures: dict[str, dict[str, float]]) -> str:
     )
 
 
+def apply_runtime_overrides(
+    model_config: dict,
+    save_local_artifacts: bool = False,
+    model_output_path: str | None = None,
+    metrics_output_path: str | None = None,
+) -> dict:
+    """Apply CLI-provided runtime overrides to a merged model configuration.
+
+    Parameters
+    ----------
+    model_config : dict
+        Merged run configuration.
+    save_local_artifacts : bool, default=False
+        Whether to force local artifact saving on.
+    model_output_path : str | None, default=None
+        Optional override for the local model artifact path.
+    metrics_output_path : str | None, default=None
+        Optional override for the local metrics artifact path.
+
+    Returns
+    -------
+    dict
+        Updated run configuration with runtime overrides applied.
+
+    Examples
+    --------
+    >>> apply_runtime_overrides({}, save_local_artifacts=True, model_output_path="models/model.pkl")
+    """
+    updated_config = model_config.copy()
+
+    if save_local_artifacts:
+        updated_config["save_local_artifacts"] = True
+
+    if model_output_path is not None or metrics_output_path is not None:
+        output_paths = dict(updated_config.get("local_output_paths", {}))
+        if model_output_path is not None:
+            output_paths["model"] = model_output_path
+        if metrics_output_path is not None:
+            output_paths["metrics"] = metrics_output_path
+        updated_config["local_output_paths"] = output_paths
+
+    return updated_config
+
+
 def get_scenario_title(suite_name: str, scenario_name: str) -> str:
     """Return the MLflow experiment title configured for a suite scenario.
 
@@ -791,6 +835,9 @@ def run_experiment(
     model_config_name: str | None = None,
     configuration_name: str | None = None,
     fail_on_thresholds: bool = False,
+    save_local_artifacts: bool = False,
+    model_output_path: str | None = None,
+    metrics_output_path: str | None = None,
 ):
     """Run every configured model for one or more scenarios in a suite file.
 
@@ -806,6 +853,12 @@ def run_experiment(
         Specific named configuration to run from the selected model config file.
     fail_on_thresholds : bool, default=False
         When ``True``, raise an error if any configured metric threshold is not met.
+    save_local_artifacts : bool, default=False
+        When ``True``, force local model and metrics files to be written.
+    model_output_path : str | None, default=None
+        Optional override for the local model artifact path.
+    metrics_output_path : str | None, default=None
+        Optional override for the local metrics artifact path.
 
     Returns
     -------
@@ -830,7 +883,13 @@ def run_experiment(
     tracking_uri = configure_mlflow_tracking()
     print(f"MLflow tracking URI set to: {tracking_uri}")
 
-    for emc in exp_model_configs:
+    for raw_model_config in exp_model_configs:
+        emc = apply_runtime_overrides(
+            raw_model_config,
+            save_local_artifacts=save_local_artifacts,
+            model_output_path=model_output_path,
+            metrics_output_path=metrics_output_path,
+        )
         mlflow.set_experiment(emc["experiment_title"])
 
         with mlflow.start_run(run_name=emc["run_name"]):
@@ -877,6 +936,19 @@ if __name__ == "__main__":
         "--fail-on-thresholds",
         action="store_true",
         help="Exit with a non-zero status if any configured metric threshold is not met",
+    )
+    parser.add_argument(
+        "--save-local-artifacts",
+        action="store_true",
+        help="Force local model and metrics files to be written for this run",
+    )
+    parser.add_argument(
+        "--model-output-path",
+        help="Optional local output path for the saved model artifact",
+    )
+    parser.add_argument(
+        "--metrics-output-path",
+        help="Optional local output path for the saved metrics artifact",
     )
     parser.add_argument(
         "--analyze",
@@ -939,4 +1011,7 @@ if __name__ == "__main__":
             model_config_name=args.model_file,
             configuration_name=args.configuration,
             fail_on_thresholds=args.fail_on_thresholds,
+            save_local_artifacts=args.save_local_artifacts,
+            model_output_path=args.model_output_path,
+            metrics_output_path=args.metrics_output_path,
         )
