@@ -78,6 +78,8 @@ If the data files are managed with DVC and are not present locally, pull them be
 dvc pull
 ```
 
+This project is intended to use the DVC-tracked training dataset for both local runs and CI. The repository is configured to use DagsHub storage as the DVC remote.
+
 ## Configuration Model
 
 ### Dataset Config
@@ -277,8 +279,35 @@ The active suite in `experiments/initial.yaml` defines two scenarios:
 
 The `ci` scenario runs:
 
-- the `baseline` configuration from `rf.yaml`
+- the `weaker_regularization` configuration from `lr.yaml`
+- against the DVC-tracked training dataset defined in `configs/datasets/employee_attrition.yaml`
 - with local artifact output enabled for `models/model.pkl` and `metrics/results.json`
+
+## DVC Remote Notes
+
+The repository expects the training dataset to be tracked with DVC and restored with `dvc pull`.
+
+This repository uses DagsHub storage as the DVC remote.
+
+- `.dvc/config` points to `https://dagshub.com/scottrdeveloper/employee-attrition.s3`
+- keep the `.dvc` pointer files committed to Git
+- provide a GitHub Actions secret named `DAGSHUB_TOKEN`
+
+Local setup:
+
+```bash
+./.venv/bin/dvc remote modify --local origin access_key_id <your-dagshub-token>
+./.venv/bin/dvc remote modify --local origin secret_access_key <your-dagshub-token>
+```
+
+Then push or pull data with:
+
+```bash
+./.venv/bin/dvc push
+./.venv/bin/dvc pull
+```
+
+The workflow uses the `DAGSHUB_TOKEN` secret to configure DVC authentication on the runner before calling `dvc pull`.
 
 The `initial` scenario includes:
 

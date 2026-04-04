@@ -1,4 +1,5 @@
 [core]
-    remote = localremote
-['remote "localremote"']
-    url = ../../../../dvc-remote
+    remote = origin
+['remote "origin"']
+    url = s3://dvc
+    endpointurl = https://dagshub.com/scottrdeveloper/employee-attrition.s3

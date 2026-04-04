@@ -23,6 +23,6 @@ scenarios:
         model: "models/model.pkl"
         metrics: "metrics/results.json"
     models:
-      - file: "rf"
+      - file: "lr"
         configurations:
-          - "baseline"
+          - "weaker_regularization"

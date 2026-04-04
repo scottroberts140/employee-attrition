@@ -32,6 +32,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Configure DagsHub credentials for DVC
+        env:
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          if [ -n "$DAGSHUB_TOKEN" ]; then
+            REMOTE_NAME=$(dvc config core.remote)
+            dvc remote modify --local "$REMOTE_NAME" access_key_id "$DAGSHUB_TOKEN"
+            dvc remote modify --local "$REMOTE_NAME" secret_access_key "$DAGSHUB_TOKEN"
+          else
+            echo "DAGSHUB_TOKEN is not set."
+            exit 1
+          fi
+
       - name: Pull DVC data
         run: dvc pull
 
@@ -62,6 +75,19 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Configure DagsHub credentials for DVC
+        env:
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          if [ -n "$DAGSHUB_TOKEN" ]; then
+            REMOTE_NAME=$(dvc config core.remote)
+            dvc remote modify --local "$REMOTE_NAME" access_key_id "$DAGSHUB_TOKEN"
+            dvc remote modify --local "$REMOTE_NAME" secret_access_key "$DAGSHUB_TOKEN"
+          else
+            echo "DAGSHUB_TOKEN is not set."
+            exit 1
+          fi
 
       - name: Pull DVC data
         run: dvc pull
