@@ -39,7 +39,9 @@ employee-attrition/
 │   ├── preprocessing.py
 │   └── train.py
 ├── tests/
+│   ├── test_dataset.py
 │   ├── test_experiment_train_evaluation.py
+│   ├── test_model_validation.py
 │   └── test_preprocessing.py
 └── requirements.txt
 ```
@@ -257,12 +259,16 @@ Run a specific test module:
 
 ```bash
 pytest tests/test_preprocessing.py
+pytest tests/test_dataset.py
+pytest tests/test_model_validation.py
 pytest tests/test_experiment_train_evaluation.py
 ```
 
 The tests cover:
 
 - preprocessing behaviors and validation
+- dataset validation against the DVC-tracked training dataset
+- model validation on small controlled examples
 - estimator parameter filtering
 - evaluation metric handling
 - suite/scenario config merging
@@ -283,32 +289,6 @@ The `ci` scenario runs:
 - against the DVC-tracked training dataset defined in `configs/datasets/employee_attrition.yaml`
 - with local artifact output enabled for `models/model.pkl` and `metrics/results.json`
 
-## DVC Remote Notes
-
-The repository expects the training dataset to be tracked with DVC and restored with `dvc pull`.
-
-This repository uses DagsHub storage as the DVC remote.
-
-- `.dvc/config` points to `https://dagshub.com/scottrdeveloper/employee-attrition.s3`
-- keep the `.dvc` pointer files committed to Git
-- provide a GitHub Actions secret named `DAGSHUB_TOKEN`
-
-Local setup:
-
-```bash
-./.venv/bin/dvc remote modify --local origin access_key_id <your-dagshub-token>
-./.venv/bin/dvc remote modify --local origin secret_access_key <your-dagshub-token>
-```
-
-Then push or pull data with:
-
-```bash
-./.venv/bin/dvc push
-./.venv/bin/dvc pull
-```
-
-The workflow uses the `DAGSHUB_TOKEN` secret to configure DVC authentication on the runner before calling `dvc pull`.
-
 The `initial` scenario includes:
 
 - all named Random Forest configurations from `rf.yaml`
@@ -316,6 +296,34 @@ The `initial` scenario includes:
 - all named Gradient Boosting configurations from `gb.yaml`
 
 Because each model entry uses `configurations: []`, running that scenario launches every named configuration in those three model files.
+
+## DVC Remote Notes
+
+The repository expects the training dataset to be tracked with DVC and restored with `dvc pull`.
+
+This repository uses DagsHub storage as the DVC remote.
+
+Remote configuration summary:
+
+- DVC remote name: `origin`
+- DagsHub repository: `https://dagshub.com/scottrdeveloper/employee-attrition`
+- The workflow authenticates to the DVC remote with the `DAGSHUB_TOKEN` GitHub secret
+
+The workflow uses the `DAGSHUB_TOKEN` secret to configure DVC authentication on the runner before calling `dvc pull`.
+
+To configure DVC authentication locally:
+
+```bash
+./.venv/bin/dvc remote modify --local origin access_key_id <your-dagshub-token>
+./.venv/bin/dvc remote modify --local origin secret_access_key <your-dagshub-token>
+```
+
+Then verify data sync with:
+
+```bash
+./.venv/bin/dvc pull
+./.venv/bin/dvc status -c
+```
 
 ## Notes
 
