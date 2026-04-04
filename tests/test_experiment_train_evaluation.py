@@ -149,6 +149,50 @@ def test_get_local_output_path_uses_default_and_custom_paths():
     )
 
 
+def test_get_data_version_info_returns_dvc_md5_when_sidecar_exists(
+    tmp_path, monkeypatch
+):
+    data_dir = tmp_path / "data" / "raw"
+    data_dir.mkdir(parents=True)
+    dataset_path = data_dir / "toy.csv"
+    dataset_path.write_text("x\n1\n")
+    (data_dir / "toy.csv.dvc").write_text(
+        """
+outs:
+  - md5: abc123
+    size: 4
+    hash: md5
+    path: toy.csv
+""".strip()
+    )
+
+    monkeypatch.setattr(experiment, "PROJECT_ROOT", tmp_path)
+
+    result = experiment.get_data_version_info({"data_url_raw": "./data/raw/toy.csv"})
+
+    assert result == {
+        "data_version": "abc123",
+        "data_version_source": "dvc_md5",
+    }
+
+
+def test_get_data_version_info_falls_back_to_file_name_when_no_dvc(
+    monkeypatch, tmp_path
+):
+    data_dir = tmp_path / "data" / "raw"
+    data_dir.mkdir(parents=True)
+    (data_dir / "toy.csv").write_text("x\n1\n")
+
+    monkeypatch.setattr(experiment, "PROJECT_ROOT", tmp_path)
+
+    result = experiment.get_data_version_info({"data_url_raw": "./data/raw/toy.csv"})
+
+    assert result == {
+        "data_version": "toy.csv",
+        "data_version_source": "file_name",
+    }
+
+
 def test_get_model_params_filters_to_supported_estimator_keys():
     config = {
         "n_estimators": 100,
@@ -326,6 +370,11 @@ def test_run_experiment_logs_to_mlflow_and_skips_local_saves_when_disabled(
         lambda model, Xtr, Xte, yte, config: returned_metrics,
     )
     monkeypatch.setattr(
+        experiment,
+        "get_data_version_info",
+        lambda config: {"data_version": "abc123", "data_version_source": "dvc_md5"},
+    )
+    monkeypatch.setattr(
         experiment.mlflow,
         "set_tracking_uri",
         lambda uri: calls.__setitem__("tracking_uri", uri),
@@ -376,7 +425,9 @@ def test_run_experiment_logs_to_mlflow_and_skips_local_saves_when_disabled(
     assert calls["tracking_uri"] == f"file://{Path.cwd() / 'mlruns'}"
     assert calls["experiment"] == ["Toy Experiment"]
     assert calls["run_name"] == "baseline"
-    assert calls["params"] == [experiment.flatten_config_for_mlflow(run_config)]
+    expected_params = experiment.flatten_config_for_mlflow(run_config)
+    expected_params.update({"data_version": "abc123", "data_version_source": "dvc_md5"})
+    assert calls["params"] == [expected_params]
     assert calls["metrics"] == [returned_metrics]
     assert calls["models"] == [(dummy_model, "model")]
     assert calls["saved_model"] == 0
@@ -429,6 +480,11 @@ def test_run_experiment_saves_local_artifacts_with_custom_paths(monkeypatch):
         experiment,
         "evaluate_model",
         lambda model, Xtr, Xte, yte, config: returned_metrics,
+    )
+    monkeypatch.setattr(
+        experiment,
+        "get_data_version_info",
+        lambda config: {"data_version": "abc123", "data_version_source": "dvc_md5"},
     )
     monkeypatch.setattr(experiment.mlflow, "set_tracking_uri", lambda uri: None)
     monkeypatch.setattr(

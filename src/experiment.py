@@ -115,6 +115,42 @@ def flatten_config_for_mlflow(config: dict, prefix: str = "") -> dict[str, Any]:
     return flattened
 
 
+def get_data_version_info(model_config: dict) -> dict[str, str]:
+    """Return data-version metadata for the configured dataset.
+
+    Parameters
+    ----------
+    model_config : dict
+        Merged run configuration containing the dataset path.
+
+    Returns
+    -------
+    dict[str, str]
+        Dictionary containing the data version value and its source.
+
+    Examples
+    --------
+    >>> get_data_version_info({"data_url_raw": "./data/raw/example.csv"})
+    """
+    data_path = PROJECT_ROOT / model_config["data_url_raw"]
+    data_path = data_path.resolve()
+    dvc_path = Path(f"{data_path}.dvc")
+
+    if dvc_path.exists():
+        dvc_info = load_yaml(dvc_path)
+        for out in dvc_info.get("outs", []):
+            if out.get("path") == data_path.name and out.get("md5"):
+                return {
+                    "data_version": out["md5"],
+                    "data_version_source": "dvc_md5",
+                }
+
+    return {
+        "data_version": data_path.name,
+        "data_version_source": "file_name",
+    }
+
+
 def get_dataset_config(dataset_name: str) -> dict:
     """Load the shared dataset configuration for an experiment.
 
@@ -386,7 +422,9 @@ def run_experiment(exp: str):
         mlflow.set_experiment(emc["experiment_title"])
 
         with mlflow.start_run(run_name=emc["run_name"]):
-            mlflow.log_params(flatten_config_for_mlflow(emc))
+            run_params = flatten_config_for_mlflow(emc)
+            run_params.update(get_data_version_info(emc))
+            mlflow.log_params(run_params)
             model, X_train, y_train, X_test, y_test = train_model(emc)
             metrics = evaluate_model(model, X_train, X_test, y_test, emc)
             mlflow.log_metrics(metrics)
