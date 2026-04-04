@@ -201,6 +201,124 @@ baseline:
     assert results[0]["experiment_title"] == "Second"
 
 
+def test_get_scenario_title_returns_title_for_requested_scenario(monkeypatch):
+    monkeypatch.setattr(
+        experiment,
+        "get_suite",
+        lambda suite_name: {
+            "scenarios": {
+                "baseline": {"title": "Baseline Comparison"},
+            }
+        },
+    )
+
+    result = experiment.get_scenario_title("initial", "baseline")
+
+    assert result == "Baseline Comparison"
+
+
+def test_get_ranked_runs_filters_missing_metric_values_and_sorts_descending(
+    monkeypatch,
+):
+    runs = pd.DataFrame(
+        [
+            {
+                "run_id": "run-1",
+                "params.model_type": "RF",
+                "metrics.f1": 0.42,
+            },
+            {
+                "run_id": "run-2",
+                "params.model_type": "LR",
+                "metrics.f1": 0.73,
+            },
+            {
+                "run_id": "run-3",
+                "params.model_type": "GB",
+                "metrics.f1": np.nan,
+            },
+        ]
+    )
+
+    monkeypatch.setattr(
+        experiment.mlflow,
+        "get_experiment_by_name",
+        lambda name: SimpleNamespace(experiment_id="123"),
+    )
+    monkeypatch.setattr(
+        experiment.mlflow,
+        "search_runs",
+        lambda experiment_ids, filter_string, order_by: runs,
+    )
+
+    result = experiment.get_ranked_runs("Toy Experiment", "f1")
+
+    assert list(result["run_id"]) == ["run-2", "run-1"]
+
+
+def test_analyze_runs_returns_top_runs_best_run_and_model_summary(monkeypatch):
+    runs = pd.DataFrame(
+        [
+            {
+                "run_id": "run-2",
+                "tags.mlflow.runName": "LR Best",
+                "params.model_type": "LR",
+                "metrics.f1": 0.73,
+                "metrics.accuracy": 0.88,
+                "metrics.auc_roc": 0.81,
+            },
+            {
+                "run_id": "run-4",
+                "tags.mlflow.runName": "LR Solid",
+                "params.model_type": "LR",
+                "metrics.f1": 0.61,
+                "metrics.accuracy": 0.84,
+                "metrics.auc_roc": 0.78,
+            },
+            {
+                "run_id": "run-1",
+                "tags.mlflow.runName": "RF Baseline",
+                "params.model_type": "RF",
+                "metrics.f1": 0.42,
+                "metrics.accuracy": 0.80,
+                "metrics.auc_roc": 0.69,
+            },
+        ]
+    )
+
+    monkeypatch.setattr(
+        experiment, "configure_mlflow_tracking", lambda: "file:///tmp/mlruns"
+    )
+    monkeypatch.setattr(
+        experiment,
+        "get_ranked_runs",
+        lambda experiment_name, metric_name: runs,
+    )
+
+    report = experiment.analyze_runs("Toy Experiment", "f1", top_n=2)
+
+    assert report["experiment_name"] == "Toy Experiment"
+    assert report["metric_name"] == "f1"
+    assert report["run_count"] == 3
+    assert [run["run_id"] for run in report["top_runs"]] == ["run-2", "run-4"]
+    assert report["best_run"]["run_id"] == "run-2"
+    assert report["best_run"]["metrics"] == {
+        "f1": 0.73,
+        "accuracy": 0.88,
+        "auc_roc": 0.81,
+    }
+    assert report["model_summary"][0]["model_type"] == "LR"
+    assert report["model_summary"][0]["average_metric"] == pytest.approx(0.67)
+    assert report["model_summary"][0]["best_metric"] == pytest.approx(0.73)
+    assert report["model_summary"][0]["num_runs"] == 2
+    assert report["model_summary"][1] == {
+        "model_type": "RF",
+        "average_metric": 0.42,
+        "best_metric": 0.42,
+        "num_runs": 1,
+    }
+
+
 def test_get_data_version_info_returns_dvc_md5_when_sidecar_exists(
     tmp_path, monkeypatch
 ):

@@ -8,6 +8,7 @@ from typing import Any
 
 import mlflow
 from mlflow import sklearn as mlflow_sklearn
+import pandas as pd
 import yaml
 
 # Add src to path so we can import preprocessing
@@ -300,6 +301,333 @@ def get_model_configurations(
     return exp_model_configs
 
 
+def get_scenario_title(suite_name: str, scenario_name: str) -> str:
+    """Return the MLflow experiment title configured for a suite scenario.
+
+    Parameters
+    ----------
+    suite_name : str
+        Suite filename without the ``.yaml`` extension.
+    scenario_name : str
+        Scenario name inside the suite definition.
+
+    Returns
+    -------
+    str
+        Scenario title used as the MLflow experiment name.
+
+    Examples
+    --------
+    >>> get_scenario_title("initial", "initial")
+    """
+    suite = get_suite(suite_name)
+    scenario_config = suite.get("scenarios", {}).get(scenario_name)
+
+    if scenario_config is None:
+        raise ValueError(
+            f"Scenario '{scenario_name}' not found in suite '{suite_name}'"
+        )
+
+    return scenario_config.get("title", scenario_name)
+
+
+def configure_mlflow_tracking() -> str:
+    """Configure MLflow to use the local project tracking directory.
+
+    Returns
+    -------
+    str
+        Active MLflow tracking URI.
+
+    Examples
+    --------
+    >>> configure_mlflow_tracking()
+    """
+    tracking_uri = Path.cwd() / "mlruns"
+    mlflow.set_tracking_uri(f"file://{tracking_uri}")
+    return mlflow.get_tracking_uri()
+
+
+def get_ranked_runs(experiment_name: str, metric_name: str):
+    """Return completed MLflow runs ranked by the requested metric.
+
+    Parameters
+    ----------
+    experiment_name : str
+        MLflow experiment name.
+    metric_name : str
+        Metric key to sort by, such as ``f1`` or ``accuracy``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Completed runs with non-null values for the requested metric, sorted in
+        descending order.
+
+    Examples
+    --------
+    >>> get_ranked_runs("Initial comparison", "f1")
+    """
+    experiment = mlflow.get_experiment_by_name(experiment_name)
+    if experiment is None:
+        available_names = [exp.name for exp in mlflow.search_experiments()]
+        available_display = ", ".join(available_names) if available_names else "none"
+        raise ValueError(
+            f"MLflow experiment not found: {experiment_name}. "
+            f"Available experiments: {available_display}"
+        )
+
+    metric_column = f"metrics.{metric_name}"
+    runs = pd.DataFrame(
+        mlflow.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            filter_string="status = 'FINISHED'",
+            order_by=[f"{metric_column} DESC"],
+        )
+    )
+
+    if runs.empty:
+        raise ValueError(f"No finished runs found for experiment '{experiment_name}'")
+
+    if metric_column not in runs.columns:
+        raise ValueError(
+            f"Metric '{metric_name}' was not logged for experiment '{experiment_name}'"
+        )
+
+    ranked_runs = runs[runs[metric_column].notna()].copy()
+    if ranked_runs.empty:
+        raise ValueError(
+            f"No finished runs with metric '{metric_name}' were found for experiment '{experiment_name}'"
+        )
+
+    return ranked_runs.sort_values(metric_column, ascending=False).reset_index(
+        drop=True
+    )
+
+
+def summarize_run(row: pd.Series, metric_name: str) -> dict[str, Any]:
+    """Convert one MLflow run row into a report-friendly dictionary.
+
+    Parameters
+    ----------
+    row : pandas.Series
+        One row from the ranked runs DataFrame.
+    metric_name : str
+        Metric key used to rank runs.
+
+    Returns
+    -------
+    dict[str, Any]
+        Normalized run summary containing identifiers, model type, and metrics.
+
+    Examples
+    --------
+    >>> summarize_run(pd.Series({"run_id": "123", "metrics.f1": 0.8}), "f1")
+    """
+    metrics = {}
+    for key, value in row.items():
+        key_name = str(key)
+        if key_name.startswith("metrics.") and not pd.isna(value):
+            metrics[key_name.removeprefix("metrics.")] = float(value)
+
+    run_name = row.get("tags.mlflow.runName")
+    model_type = row.get("params.model_type")
+
+    return {
+        "run_id": str(row["run_id"]),
+        "run_name": None if pd.isna(run_name) else str(run_name),
+        "model_type": None if pd.isna(model_type) else str(model_type),
+        "metric_value": float(row[f"metrics.{metric_name}"]),
+        "metrics": metrics,
+    }
+
+
+def summarize_runs_by_model_type(
+    runs: pd.DataFrame, metric_name: str
+) -> list[dict[str, Any]]:
+    """Aggregate the requested metric by model type across ranked runs.
+
+    Parameters
+    ----------
+    runs : pandas.DataFrame
+        Ranked MLflow runs.
+    metric_name : str
+        Metric key used for comparison.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        Per-model summary containing average, best, and run count.
+
+    Examples
+    --------
+    >>> summarize_runs_by_model_type(pd.DataFrame(), "f1")
+    """
+    metric_column = f"metrics.{metric_name}"
+    grouped_runs = runs.copy()
+
+    if "params.model_type" in grouped_runs.columns:
+        grouped_runs["model_type"] = grouped_runs["params.model_type"].fillna("Unknown")
+    else:
+        grouped_runs["model_type"] = "Unknown"
+
+    summary = (
+        grouped_runs.groupby("model_type")[metric_column]
+        .agg(["mean", "max", "count"])
+        .reset_index()
+        .sort_values("max", ascending=False)
+    )
+
+    return [
+        {
+            "model_type": str(row["model_type"]),
+            "average_metric": float(row["mean"]),
+            "best_metric": float(row["max"]),
+            "num_runs": int(row["count"]),
+        }
+        for _, row in summary.iterrows()
+    ]
+
+
+def analyze_runs(
+    experiment_name: str, metric_name: str, top_n: int = 5
+) -> dict[str, Any]:
+    """Build a comparison report for completed MLflow runs.
+
+    Parameters
+    ----------
+    experiment_name : str
+        MLflow experiment name.
+    metric_name : str
+        Metric key used for ranking and aggregation.
+    top_n : int, default=5
+        Number of leading runs to include in the report.
+
+    Returns
+    -------
+    dict[str, Any]
+        Report payload containing top runs, the best run, and a model summary.
+
+    Examples
+    --------
+    >>> analyze_runs("Initial comparison", "f1")
+    """
+    if top_n < 1:
+        raise ValueError("top_n must be at least 1")
+
+    configure_mlflow_tracking()
+    runs = get_ranked_runs(experiment_name, metric_name)
+    top_runs = [
+        summarize_run(row, metric_name) for _, row in runs.head(top_n).iterrows()
+    ]
+
+    return {
+        "experiment_name": experiment_name,
+        "metric_name": metric_name,
+        "run_count": len(runs),
+        "top_runs": top_runs,
+        "best_run": summarize_run(runs.iloc[0], metric_name),
+        "model_summary": summarize_runs_by_model_type(runs, metric_name),
+    }
+
+
+def format_metric_label(metric_name: str) -> str:
+    """Return a readable label for a metric key.
+
+    Parameters
+    ----------
+    metric_name : str
+        Raw metric key.
+
+    Returns
+    -------
+    str
+        Human-readable metric label.
+
+    Examples
+    --------
+    >>> format_metric_label("auc_roc")
+    """
+    special_labels = {
+        "f1": "F1",
+        "auc_roc": "AUC-ROC",
+    }
+    if metric_name in special_labels:
+        return special_labels[metric_name]
+
+    return metric_name.replace("_", " ").title()
+
+
+def print_analysis_report(report: dict[str, Any]) -> None:
+    """Print a human-readable run comparison report.
+
+    Parameters
+    ----------
+    report : dict[str, Any]
+        Output from :func:`analyze_runs`.
+
+    Returns
+    -------
+    None
+        This function prints the report to stdout.
+
+    Examples
+    --------
+    >>> report = analyze_runs("Initial comparison", "f1")
+    >>> print_analysis_report(report)
+    """
+    metric_name = report["metric_name"]
+    metric_label = format_metric_label(metric_name)
+
+    print(f"MLflow tracking URI set to: {mlflow.get_tracking_uri()}")
+    print(
+        f"\nTop {len(report['top_runs'])} Runs by {metric_label} "
+        f"for '{report['experiment_name']}':"
+    )
+    print("=" * 80)
+
+    for run in report["top_runs"]:
+        print(f"\nRun: {run['run_id'][:8]}...")
+        if run["run_name"]:
+            print(f"  Run Name: {run['run_name']}")
+        print(f"  Model:    {run['model_type'] or 'Unknown'}")
+        print(f"  {metric_label}: {run['metric_value']:.4f}")
+
+        for extra_metric in ("accuracy", "f1", "auc_roc"):
+            if extra_metric == metric_name or extra_metric not in run["metrics"]:
+                continue
+            print(
+                f"  {format_metric_label(extra_metric)}: "
+                f"{run['metrics'][extra_metric]:.4f}"
+            )
+
+    best_run = report["best_run"]
+    print(f"\n{'=' * 80}")
+    print("BEST MODEL")
+    print("=" * 80)
+    print(f"Run ID:     {best_run['run_id']}")
+    if best_run["run_name"]:
+        print(f"Run Name:   {best_run['run_name']}")
+    print(f"Model Type: {best_run['model_type'] or 'Unknown'}")
+    print(f"{metric_label}:   {best_run['metric_value']:.4f}")
+
+    print(f"\n{'=' * 80}")
+    print(f"Average {metric_label} by Model Type:")
+    print("=" * 80)
+    summary = pd.DataFrame(report["model_summary"])
+    if summary.empty:
+        print("No model summary available.")
+        return
+
+    summary = summary.rename(
+        columns={
+            "average_metric": f"avg_{metric_name}",
+            "best_metric": f"best_{metric_name}",
+        }
+    )
+    print(summary.to_string(index=False))
+
+
 def save_model(model, model_path: Path) -> None:
     """Save a trained model to a local pickle file.
 
@@ -426,10 +754,8 @@ def run_experiment(suite_name: str, scenario_name: str | None = None):
     suite = get_suite(suite_name)
     exp_model_configs = get_model_configurations(suite, scenario_name=scenario_name)
 
-    current_dir = os.getcwd()
-    tracking_uri = os.path.join(current_dir, "mlruns")
-    mlflow.set_tracking_uri(f"file://{tracking_uri}")
-    print(f"MLflow tracking URI set to: {mlflow.get_tracking_uri()}")
+    tracking_uri = configure_mlflow_tracking()
+    print(f"MLflow tracking URI set to: {tracking_uri}")
 
     for emc in exp_model_configs:
         mlflow.set_experiment(emc["experiment_title"])
@@ -452,7 +778,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--suite",
-        required=True,
         help="Suite yaml filename without the .yaml extension",
     )
     parser.add_argument(
@@ -460,6 +785,56 @@ if __name__ == "__main__":
         required=False,
         help="Optional scenario name within the suite to run",
     )
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Analyze completed MLflow runs instead of launching training runs",
+    )
+    parser.add_argument(
+        "--experiment-name",
+        help=(
+            "MLflow experiment name to analyze. If omitted in analyze mode, "
+            "the title will be resolved from --suite and --scenario."
+        ),
+    )
+    parser.add_argument(
+        "--metric",
+        help="Metric key used to rank runs in analyze mode, such as f1 or accuracy",
+    )
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=5,
+        help="Number of top runs to show in analyze mode",
+    )
     args = parser.parse_args()
 
-    run_experiment(args.suite, scenario_name=args.scenario)
+    if args.analyze:
+        if args.metric is None:
+            parser.error("--metric is required when using --analyze")
+
+        experiment_name = args.experiment_name
+        if experiment_name is None:
+            if args.suite is None:
+                parser.error(
+                    "Analyze mode requires --experiment-name or a --suite value"
+                )
+
+            if args.scenario is None:
+                suite = get_suite(args.suite)
+                scenario_names = list(suite.get("scenarios", {}))
+                if len(scenario_names) != 1:
+                    parser.error(
+                        "Analyze mode requires --scenario when a suite defines multiple scenarios"
+                    )
+                args.scenario = scenario_names[0]
+
+            experiment_name = get_scenario_title(args.suite, args.scenario)
+
+        report = analyze_runs(experiment_name, args.metric, top_n=args.top_n)
+        print_analysis_report(report)
+    else:
+        if args.suite is None:
+            parser.error("--suite is required unless --analyze is used")
+
+        run_experiment(args.suite, scenario_name=args.scenario)
