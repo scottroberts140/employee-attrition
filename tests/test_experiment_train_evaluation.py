@@ -104,7 +104,7 @@ baseline:
 
     experiment_config = {
         "dataset_config": "toy_dataset",
-        "experiments": {
+        "scenarios": {
             "baseline": {
                 "title": "Toy Experiment",
                 "defaults": {"metrics": {"accuracy": 0.6}},
@@ -118,7 +118,7 @@ baseline:
     assert len(results) == 1
     result = results[0]
     assert result["dataset_name"] == "toy_dataset"
-    assert result["experiment_name"] == "baseline"
+    assert result["scenario_name"] == "baseline"
     assert result["experiment_title"] == "Toy Experiment"
     assert result["run_name"] == "Toy RF Baseline"
     assert result["model_type"] == "RF"
@@ -148,6 +148,57 @@ def test_get_local_output_path_uses_default_and_custom_paths():
     assert (
         custom_metrics_path == experiment.PROJECT_ROOT / "metrics/custom/results.json"
     )
+
+
+def test_get_model_configurations_filters_to_requested_scenario(tmp_path, monkeypatch):
+    dataset_dir = tmp_path / "configs" / "datasets"
+    model_dir = tmp_path / "configs" / "models" / "toy_dataset"
+    dataset_dir.mkdir(parents=True)
+    model_dir.mkdir(parents=True)
+
+    (dataset_dir / "toy_dataset.yaml").write_text(
+        """
+target: "Attrition"
+data_url_raw: "./toy.csv"
+numeric_columns: ["Age"]
+categorical_columns: ["Dept"]
+features_to_drop: []
+test_size: 0.2
+random_state: 75
+""".strip()
+    )
+    (model_dir / "rf.yaml").write_text(
+        """
+_global_:
+  model_type: "RF"
+
+baseline:
+  title: "RF Baseline"
+""".strip()
+    )
+
+    monkeypatch.setattr(experiment, "DATASET_CONFIG_DIR", dataset_dir)
+    monkeypatch.setattr(experiment, "MODEL_CONFIG_DIR", tmp_path / "configs" / "models")
+
+    suite = {
+        "dataset_config": "toy_dataset",
+        "scenarios": {
+            "first": {
+                "title": "First",
+                "models": [{"file": "rf", "configurations": []}],
+            },
+            "second": {
+                "title": "Second",
+                "models": [{"file": "rf", "configurations": []}],
+            },
+        },
+    }
+
+    results = experiment.get_model_configurations(suite, scenario_name="second")
+
+    assert len(results) == 1
+    assert results[0]["scenario_name"] == "second"
+    assert results[0]["experiment_title"] == "Second"
 
 
 def test_get_data_version_info_returns_dvc_md5_when_sidecar_exists(
@@ -425,9 +476,11 @@ def test_run_experiment_logs_to_mlflow_and_skips_local_saves_when_disabled(
         def __exit__(self, exc_type, exc, tb):
             return False
 
-    monkeypatch.setattr(experiment, "get_experiment", lambda exp: {"stub": True})
+    monkeypatch.setattr(experiment, "get_suite", lambda exp: {"stub": True})
     monkeypatch.setattr(
-        experiment, "get_model_configurations", lambda exp: [run_config]
+        experiment,
+        "get_model_configurations",
+        lambda exp, scenario_name=None: [run_config],
     )
     monkeypatch.setattr(
         experiment,
@@ -490,7 +543,7 @@ def test_run_experiment_logs_to_mlflow_and_skips_local_saves_when_disabled(
         ),
     )
 
-    experiment.run_experiment("experiment_baseline")
+    experiment.run_experiment("initial")
 
     assert calls["tracking_uri"] == f"file://{Path.cwd() / 'mlruns'}"
     assert calls["experiment"] == ["Toy Experiment"]
@@ -537,9 +590,11 @@ def test_run_experiment_saves_local_artifacts_with_custom_paths(monkeypatch):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-    monkeypatch.setattr(experiment, "get_experiment", lambda exp: {"stub": True})
+    monkeypatch.setattr(experiment, "get_suite", lambda exp: {"stub": True})
     monkeypatch.setattr(
-        experiment, "get_model_configurations", lambda exp: [run_config]
+        experiment,
+        "get_model_configurations",
+        lambda exp, scenario_name=None: [run_config],
     )
     monkeypatch.setattr(
         experiment,
@@ -580,7 +635,7 @@ def test_run_experiment_saves_local_artifacts_with_custom_paths(monkeypatch):
         lambda metrics, path: saved_paths.__setitem__("metrics", path),
     )
 
-    experiment.run_experiment("experiment_baseline")
+    experiment.run_experiment("initial")
 
     assert (
         saved_paths["model"] == experiment.PROJECT_ROOT / "models/custom/toy_model.pkl"

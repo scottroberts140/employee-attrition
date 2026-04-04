@@ -175,26 +175,26 @@ def get_dataset_config(dataset_name: str) -> dict:
     return load_yaml(dataset_config_path)
 
 
-def get_experiment(exp: str):
-    """Load an experiment definition file.
+def get_suite(suite_name: str):
+    """Load a suite definition file.
 
     Parameters
     ----------
-    exp : str
-        Experiment filename without the ``.yaml`` extension.
+    suite_name : str
+        Suite filename without the ``.yaml`` extension.
 
     Returns
     -------
     dict
-        Experiment configuration contents.
+        Suite configuration contents.
 
     Examples
     --------
-    >>> get_experiment("experiment_baseline")
+    >>> get_suite("initial")
     """
-    experiment_path = EXPERIMENT_DIR / f"{exp}.yaml"
+    experiment_path = EXPERIMENT_DIR / f"{suite_name}.yaml"
     if not experiment_path.exists():
-        raise FileNotFoundError(f"Experiment file not found: {experiment_path}")
+        raise FileNotFoundError(f"Suite file not found: {experiment_path}")
 
     return load_yaml(experiment_path)
 
@@ -225,13 +225,17 @@ def get_model_config_file(dataset_name: str, model_config_name: str) -> Path:
     return model_config_path
 
 
-def get_model_configurations(experiment: dict) -> list[dict]:
-    """Build merged model configurations for every run in an experiment file.
+def get_model_configurations(
+    suite: dict, scenario_name: str | None = None
+) -> list[dict]:
+    """Build merged model configurations for one or more scenarios in a suite file.
 
     Parameters
     ----------
-    experiment : dict
-        Experiment definition containing dataset, experiment, and model references.
+    suite : dict
+        Suite definition containing dataset, scenario, and model references.
+    scenario_name : str | None, default=None
+        Specific scenario to run. When omitted, all scenarios are included.
 
     Returns
     -------
@@ -240,21 +244,27 @@ def get_model_configurations(experiment: dict) -> list[dict]:
 
     Examples
     --------
-    >>> experiment = get_experiment("experiment_baseline")
-    >>> get_model_configurations(experiment)
+    >>> suite = get_suite("initial")
+    >>> get_model_configurations(suite)
+    >>> get_model_configurations(suite, scenario_name="initial")
     """
     exp_model_configs = []
-    dataset_name = experiment["dataset_config"]
+    dataset_name = suite["dataset_config"]
     dataset_config = get_dataset_config(dataset_name)
 
-    experiment_definitions = experiment.get("experiments", {})
-    if not experiment_definitions:
-        raise ValueError("Experiment file must define at least one experiment")
+    scenario_definitions = suite.get("scenarios", {})
+    if not scenario_definitions:
+        raise ValueError("Suite file must define at least one scenario")
 
-    for experiment_name, experiment_config in experiment_definitions.items():
-        experiment_defaults = experiment_config.get("defaults", {})
-        experiment_title = experiment_config.get("title", experiment_name)
-        model_entries = experiment_config.get("models", [])
+    if scenario_name is not None:
+        if scenario_name not in scenario_definitions:
+            raise ValueError(f"Scenario '{scenario_name}' not found in suite")
+        scenario_definitions = {scenario_name: scenario_definitions[scenario_name]}
+
+    for current_scenario_name, scenario_config in scenario_definitions.items():
+        experiment_defaults = scenario_config.get("defaults", {})
+        experiment_title = scenario_config.get("title", current_scenario_name)
+        model_entries = scenario_config.get("models", [])
 
         for model_entry in model_entries:
             model_configs_file = model_entry["file"]
@@ -282,7 +292,7 @@ def get_model_configurations(experiment: dict) -> list[dict]:
                     )
                     exp_model_config = merge_dicts(exp_model_config, mc_value)
                     exp_model_config["dataset_name"] = dataset_name
-                    exp_model_config["experiment_name"] = experiment_name
+                    exp_model_config["scenario_name"] = current_scenario_name
                     exp_model_config["experiment_title"] = experiment_title
                     exp_model_config["run_name"] = mc_value.get("title", mc_key)
                     exp_model_configs.append(exp_model_config)
@@ -392,13 +402,15 @@ def get_local_output_path(model_config: dict, artifact_type: str) -> Path:
     return PROJECT_ROOT / configured_path
 
 
-def run_experiment(exp: str):
-    """Run every configured model for an experiment definition.
+def run_experiment(suite_name: str, scenario_name: str | None = None):
+    """Run every configured model for one or more scenarios in a suite file.
 
     Parameters
     ----------
-    exp : str
-        Experiment filename without the ``.yaml`` extension.
+    suite_name : str
+        Suite filename without the ``.yaml`` extension.
+    scenario_name : str | None, default=None
+        Specific scenario to run. When omitted, all scenarios are run.
 
     Returns
     -------
@@ -408,10 +420,11 @@ def run_experiment(exp: str):
 
     Examples
     --------
-    >>> run_experiment("experiment_baseline")
+    >>> run_experiment("initial")
+    >>> run_experiment("initial", scenario_name="initial")
     """
-    experiment = get_experiment(exp)
-    exp_model_configs = get_model_configurations(experiment)
+    suite = get_suite(suite_name)
+    exp_model_configs = get_model_configurations(suite, scenario_name=scenario_name)
 
     current_dir = os.getcwd()
     tracking_uri = os.path.join(current_dir, "mlruns")
@@ -438,10 +451,15 @@ def run_experiment(exp: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--exp",
+        "--suite",
         required=True,
-        help="Experiment yaml filename without the .yaml extension",
+        help="Suite yaml filename without the .yaml extension",
+    )
+    parser.add_argument(
+        "--scenario",
+        required=False,
+        help="Optional scenario name within the suite to run",
     )
     args = parser.parse_args()
 
-    run_experiment(args.exp)
+    run_experiment(args.suite, scenario_name=args.scenario)
