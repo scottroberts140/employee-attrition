@@ -339,7 +339,6 @@ def test_train_model_trains_logistic_regression_on_synthetic_data(monkeypatch):
         "solver": "liblinear",
         "max_iter": 200,
         "C": 1.0,
-        "penalty": "l2",
     }
 
     model, X_train, y_train, X_test, y_test = train.train_model(config)

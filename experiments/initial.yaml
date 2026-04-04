@@ -1,0 +1,15 @@
+dataset_config: "employee_attrition"
+
+experiments:
+  initial:
+    title: "Initial experiment"
+    description: "Initial experiment for the employee attrition dataset."
+    defaults:
+      save_local_artifacts: false
+    models:
+      - file: "rf"
+        configurations: []
+      - file: "lr"
+        configurations: []
+      - file: "gb"
+        configurations: []
