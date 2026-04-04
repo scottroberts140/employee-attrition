@@ -1,0 +1,44 @@
+_global_:
+  model_type: "RF"
+  missing_value_strategy_numeric: "median"
+  missing_value_strategy_categorical: "mode"
+  n_estimators: 100
+  max_depth: 10
+  additional_features_to_drop: []
+  metrics:
+    accuracy: 0.84
+    f1: 0.35
+    precision:
+    recall: 0.30
+
+baseline:
+  title: "Random Forest Baseline"
+  description: "Baseline configuration for Random Forest models."
+
+shallow_trees:
+  title: "Random Forest Shallow Trees"
+  description: "Random forest with shallower trees to reduce overfitting."
+  max_depth: 5
+
+deep_trees:
+  title: "Random Forest Deep Trees"
+  description: "Random forest with deeper trees to capture more complex interactions."
+  max_depth: 16
+
+more_trees:
+  title: "Random Forest More Trees"
+  description: "Random forest with more estimators for a more stable ensemble."
+  n_estimators: 300
+
+balanced_classes:
+  title: "Random Forest Balanced Classes"
+  description: "Random forest with class weighting to address attrition imbalance."
+  class_weight: "balanced"
+
+wide_search_candidate:
+  title: "Random Forest Wide Search Candidate"
+  description: "Random forest candidate with more trees and balanced classes."
+  n_estimators: 500
+  max_depth: 12
+  class_weight: "balanced"
+

@@ -1,0 +1,40 @@
+_global_:
+  model_type: "GB"
+  missing_value_strategy_numeric: "median"
+  missing_value_strategy_categorical: "mode"
+  learning_rate: 0.1
+  n_estimators: 100
+  max_depth: 3
+  additional_features_to_drop: []
+  metrics:
+    accuracy: 0.84
+    f1: 0.35
+    precision:
+    recall: 0.30
+
+baseline:
+  title: "Gradient Boosting Baseline"
+  description: "Baseline configuration for gradient boosting models."
+
+slower_learning:
+  title: "Gradient Boosting Slower Learning"
+  description: "Gradient boosting with a lower learning rate and more boosting stages."
+  learning_rate: 0.05
+  n_estimators: 250
+
+faster_learning:
+  title: "Gradient Boosting Faster Learning"
+  description: "Gradient boosting with a higher learning rate and fewer stages."
+  learning_rate: 0.2
+  n_estimators: 75
+
+deeper_trees:
+  title: "Gradient Boosting Deeper Trees"
+  description: "Gradient boosting with deeper individual trees."
+  max_depth: 5
+
+subsampled:
+  title: "Gradient Boosting Subsampled"
+  description: "Gradient boosting with stochastic subsampling for regularization."
+  subsample: 0.8
+  n_estimators: 150

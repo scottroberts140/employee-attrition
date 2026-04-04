@@ -1,0 +1,43 @@
+_global_:
+  model_type: "LR"
+  missing_value_strategy_numeric: "median"
+  missing_value_strategy_categorical: "mode"
+  solver: "liblinear"
+  max_iter: 500
+  additional_features_to_drop: []
+  metrics:
+    accuracy: 0.84
+    f1: 0.35
+    precision:
+    recall: 0.30
+
+baseline:
+  title: "Logistic Regression Baseline"
+  description: "Baseline configuration for logistic regression models."
+  penalty: "l2"
+  C: 1.0
+
+stronger_regularization:
+  title: "Logistic Regression Stronger Regularization"
+  description: "Logistic regression with stronger regularization."
+  penalty: "l2"
+  C: 0.5
+
+weaker_regularization:
+  title: "Logistic Regression Weaker Regularization"
+  description: "Logistic regression with weaker regularization."
+  penalty: "l2"
+  C: 2.0
+
+l1_sparse:
+  title: "Logistic Regression L1 Sparse"
+  description: "Logistic regression with L1 regularization for sparse feature selection."
+  penalty: "l1"
+  C: 1.0
+
+balanced_classes:
+  title: "Logistic Regression Balanced Classes"
+  description: "Logistic regression with class weighting for imbalanced attrition classes."
+  penalty: "l2"
+  C: 1.0
+  class_weight: "balanced"
