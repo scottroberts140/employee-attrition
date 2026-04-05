@@ -42,9 +42,12 @@ employee-attrition/
 │   └── train.py
 ├── MONITORING.md
 ├── tests/
+│   ├── fixtures/
+│   ├── test_compare_experiments.py
 │   ├── test_dataset.py
 │   ├── test_experiment_train_evaluation.py
 │   ├── test_model_validation.py
+│   ├── test_monitor_drift.py
 │   └── test_preprocessing.py
 └── requirements.txt
 ```
