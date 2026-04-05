@@ -36,8 +36,10 @@ employee-attrition/
 ├── src/
 │   ├── evaluation.py
 │   ├── experiment.py
+│   ├── monitor_drift.py
 │   ├── preprocessing.py
 │   └── train.py
+├── MONITORING.md
 ├── tests/
 │   ├── test_dataset.py
 │   ├── test_experiment_train_evaluation.py
@@ -204,6 +206,28 @@ The analysis report includes:
 - average and best metric values grouped by model type
 
 Important detail: if you analyze by `--suite` and `--scenario`, the MLflow experiment name is taken from the scenario `title` in the suite YAML. If you rename that title after runs already exist, use `--experiment-name` to query the older MLflow experiment directly.
+
+## Drift Monitoring
+
+The project includes a drift monitoring script at `src/monitor_drift.py`.
+
+It:
+
+- loads the DVC-tracked training dataset as the reference distribution
+- creates a simulated production dataset from a held-out split of the same dataset
+- injects synthetic drift into selected production features
+- runs Evidently drift detection across all active model input features
+- prints drifted features and the overall drift share
+- saves an HTML report to `reports/drift_report.html`
+- exits with code `1` when drift share exceeds the configured threshold
+
+Example:
+
+```bash
+python src/monitor_drift.py --max-drift-share 0.15
+```
+
+The written monitoring analysis is in `MONITORING.md`.
 
 ## Preprocessing and Evaluation
 
