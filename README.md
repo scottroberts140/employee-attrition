@@ -34,7 +34,6 @@ employee-attrition/
 ├── experiments/
 │   └── initial.yaml
 ├── src/
-│   ├── compare_experiments.py
 │   ├── evaluation.py
 │   ├── experiment.py
 │   ├── monitor_drift.py
@@ -43,7 +42,6 @@ employee-attrition/
 ├── MONITORING.md
 ├── tests/
 │   ├── fixtures/
-│   ├── test_compare_experiments.py
 │   ├── test_dataset.py
 │   ├── test_experiment_train_evaluation.py
 │   ├── test_model_validation.py
@@ -183,10 +181,7 @@ When a `.dvc` sidecar exists for the configured dataset, the DVC `md5` value is 
 
 ## Comparing Runs Programmatically
 
-The project supports programmatic MLflow comparison in two ways:
-
-- `src/experiment.py --analyze` for the integrated workflow
-- `src/compare_experiments.py` as a dedicated comparison entry point that calls `mlflow.search_runs()` directly
+The project supports programmatic MLflow comparison through the integrated analysis mode in `src/experiment.py`.
 
 Analyze a known MLflow experiment name by metric:
 
@@ -194,22 +189,10 @@ Analyze a known MLflow experiment name by metric:
 python src/experiment.py --analyze --experiment-name "Initial comparision" --metric f1
 ```
 
-Equivalent dedicated wrapper script:
-
-```bash
-python src/compare_experiments.py --experiment-name "Initial comparision" --metric f1
-```
-
 Analyze by suite and scenario:
 
 ```bash
 python src/experiment.py --analyze --suite initial --scenario initial --metric f1
-```
-
-Or use the dedicated wrapper with the same suite and scenario resolution:
-
-```bash
-python src/compare_experiments.py --suite initial --scenario initial --metric f1
 ```
 
 Limit the report to a different number of top runs:
